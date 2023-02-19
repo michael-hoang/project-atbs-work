@@ -2,3 +2,4 @@ __pycache__/
 .cred/
 .data/
 .tmp/
+current_version/
