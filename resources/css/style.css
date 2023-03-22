@@ -6,6 +6,7 @@ body {
     font-family: 'Share Tech Mono', monospace;
     margin: 0;
     min-height: 100vh;
+    min-width: 100vw;
 }
 
 .header-btns button {
@@ -16,10 +17,12 @@ body {
     font-family: 'Roboto', sans-serif;
     font-family: 'Share Tech Mono', monospace;
     font-size: 24px;
+    font-weight: bold;
     padding: 14px 28px;
     cursor: pointer;
     text-align: center;
     transition: all .1s ease-in-out;
+    width: 100%;
 }
 
 .header-btns button:hover {
@@ -35,23 +38,24 @@ body {
 .header-logo {
     align-items: center;
     display: flex;
-    margin-left: 10%;
+    margin-left: 15%;
     padding: 20px;
 }
 
 #logo-text {
     align-items: center;
     display: flex;
-    font-size: 50px;
+    font-size: 60px;
     font-weight: bold;
     justify-content: center;
     padding: 0 25px;
     position: relative;
     width: 100%;
+    
 }
 
 #logo-text span {
-    animation: zoomup 2.5s linear infinite;
+    animation: zoomup 2.2s linear forwards;
     animation-delay: calc(200ms * var(--i));
 }
 
@@ -66,27 +70,24 @@ body {
       }
     
       5%,
-      95% {
+      100% {
         filter: blur(0);
-        color: #40513B;
+        color: #EDF1D6;
         text-shadow: none;
+        text-shadow: -3px -3px 0 #000, 3px -3px 0 #000, -3px 3px 0 #000, 3px 3px 0 #000;
       }
 }
 
 .header-btns {
     display: flex;
     align-items: center;
-    margin-right: 10%;
+    margin-right: 15%;
     list-style-type: none;
 }
 
 .header-btns li {
     padding: 20px;
     font-size: 24px;
-}
-
-li a:hover {
-    color: #e63946;
 }
 
 a {
