@@ -8,6 +8,19 @@ body {
     min-height: 100vh;
 }
 
+.header-btns button {
+    background-color: #EDF1D6;
+    border: 2px solid;
+    border-radius: 10px;
+    color: #40513B;
+    font-family: 'Roboto', sans-serif;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 24px;
+    padding: 14px 28px;
+    cursor: pointer;
+    text-align: center;
+}
+
 .header {
     display: flex;
     justify-content: space-between;
@@ -27,16 +40,16 @@ body {
 
 }
 
-.header-links {
+.header-btns {
     display: flex;
     align-items: center;
     margin-right: 10%;
     list-style-type: none;
 }
 
-.header-links li {
+.header-btns li {
     padding: 20px;
-    font-size: 25px;
+    font-size: 24px;
 }
 
 li a:hover {
