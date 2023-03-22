@@ -19,6 +19,11 @@ body {
     padding: 14px 28px;
     cursor: pointer;
     text-align: center;
+    transition: all .1s ease-in-out;
+}
+
+.header-btns button:hover {
+    transform: scale(1.1);
 }
 
 .header {
