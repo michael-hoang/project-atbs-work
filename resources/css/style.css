@@ -6,7 +6,6 @@ body {
     font-family: 'Share Tech Mono', monospace;
     margin: 0;
     min-height: 100vh;
-    
 }
 
 .header-btns button {
@@ -31,7 +30,7 @@ body {
 
 .header {
     display: flex;
-    justify-content: space-between;
+    justify-content:center;
     background-color: #9DC08B;
 }
 
