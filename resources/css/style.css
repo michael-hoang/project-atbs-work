@@ -39,11 +39,38 @@ body {
     padding: 20px;
 }
 
-.logo-title {
-    padding: 0 25px;
+#logo-text {
+    align-items: center;
+    display: flex;
     font-size: 50px;
     font-weight: bold;
+    justify-content: center;
+    padding: 0 25px;
+    position: relative;
+    width: 100%;
+}
 
+#logo-text span {
+    animation: zoomup 2.5s linear infinite;
+    animation-delay: calc(200ms * var(--i));
+}
+
+@keyframes zoomup {
+    0%,
+    100% {
+        color: #EDF1D6;
+        filter: blur(1px);
+        text-shadow: 0 0 10px #EDF1D6, 0 0 20px #EDF1D6, 0 0 30px #EDF1D6,
+          0 0 40px #EDF1D6, 0 0 60px #EDF1D6, 0 0 80px #EDF1D6, 0 0 100px #EDF1D6,
+          0 0 120px #EDF1D6;
+      }
+    
+      5%,
+      95% {
+        filter: blur(0);
+        color: #40513B;
+        text-shadow: none;
+      }
 }
 
 .header-btns {
