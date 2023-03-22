@@ -1,21 +1,23 @@
 body {
-    margin: 0;
+    color: #40513B;
     display: flex;
     flex-direction: column;
     font-family: 'Roboto', sans-serif;
     font-family: 'Share Tech Mono', monospace;
+    margin: 0;
     min-height: 100vh;
 }
 
 .header {
     display: flex;
     justify-content: space-between;
-    background-color: #a8dadc;
+    background-color: #9DC08B;
 }
 
 .header-logo {
     display: flex;
     align-items: center;
+    margin-left: 10%;
     padding: 20px;
 }
 
@@ -28,6 +30,7 @@ body {
 .header-links {
     display: flex;
     align-items: center;
+    margin-right: 10%;
     list-style-type: none;
 }
 
@@ -42,11 +45,11 @@ li a:hover {
 
 a {
     text-decoration: none;
-    color: black;
+    color: #40513B;
 }
 
 .content {
-    background-color: #f1faee;
+    background-color: #EDF1D6;
     display: flex;
     flex-direction: column;
     flex: 1 1 auto;
@@ -56,7 +59,8 @@ a {
 }
 
 .footer {
-    background-color: #a8dadc;
+    background-color: #609966;
+    color: #EDF1D6;
     text-align: center;
     height: 60px;
     line-height: 60px;
