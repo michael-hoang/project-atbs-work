@@ -10,7 +10,7 @@ body {
 
 .header-btns button {
     background-color: #EDF1D6;
-    border: 2px solid;
+    border: 3px solid black;
     border-radius: 10px;
     color: #40513B;
     font-family: 'Roboto', sans-serif;
@@ -33,15 +33,16 @@ body {
 }
 
 .header-logo {
-    display: flex;
     align-items: center;
+    display: flex;
     margin-left: 10%;
     padding: 20px;
 }
 
 .logo-title {
     padding: 0 25px;
-    font-size: 40px;
+    font-size: 50px;
+    font-weight: bold;
 
 }
 
