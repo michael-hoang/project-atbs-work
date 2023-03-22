@@ -6,7 +6,7 @@ body {
     font-family: 'Share Tech Mono', monospace;
     margin: 0;
     min-height: 100vh;
-    min-width: 100vw;
+    
 }
 
 .header-btns button {
@@ -38,7 +38,7 @@ body {
 .header-logo {
     align-items: center;
     display: flex;
-    margin-left: 15%;
+    /* margin-left: 15%; */
     padding: 20px;
 }
 
@@ -81,13 +81,19 @@ body {
 .header-btns {
     display: flex;
     align-items: center;
-    margin-right: 15%;
+    /* margin-right: 15%; */
     list-style-type: none;
 }
 
 .header-btns li {
     padding: 20px;
     font-size: 24px;
+}
+
+html {
+    min-width: 100vw;
+    height: max-content;
+    width: max-content;
 }
 
 a {
