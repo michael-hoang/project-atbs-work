@@ -1,5 +1,5 @@
 body {
-    color: #40513B;
+    color: black;
     display: flex;
     flex-direction: column;
     font-family: 'Roboto', sans-serif;
@@ -9,10 +9,9 @@ body {
 }
 
 .header-btns button {
-    background-color: #EDF1D6;
+    background-color: rgb(248, 248, 255);
     border: 3px solid black;
     border-radius: 10px;
-    color: #40513B;
     font-family: 'Roboto', sans-serif;
     font-family: 'Share Tech Mono', monospace;
     font-size: 24px;
@@ -25,19 +24,23 @@ body {
 }
 
 .header-btns button:hover {
-    transform: scale(1.1);
+    transform: scale(1.03);
+}
+
+.header-btns button:active {
+    transform: scale(0.98);
 }
 
 .header {
+    background-color: #4876ff;
     display: flex;
+    gap: 20vw;
     justify-content:center;
-    background-color: #9DC08B;
 }
 
 .header-logo {
     align-items: center;
     display: flex;
-    /* margin-left: 15%; */
     padding: 20px;
 }
 
@@ -61,17 +64,17 @@ body {
 @keyframes zoomup {
     0%,
     100% {
-        color: #EDF1D6;
+        color: white;
         filter: blur(1px);
-        text-shadow: 0 0 10px #EDF1D6, 0 0 20px #EDF1D6, 0 0 30px #EDF1D6,
-          0 0 40px #EDF1D6, 0 0 60px #EDF1D6, 0 0 80px #EDF1D6, 0 0 100px #EDF1D6,
-          0 0 120px #EDF1D6;
+        text-shadow: 0 0 10px white, 0 0 20px white, 0 0 30px white,
+          0 0 40px white, 0 0 60px white, 0 0 80px white, 0 0 100px white,
+          0 0 120px white;
       }
     
       5%,
       100% {
         filter: blur(0);
-        color: #EDF1D6;
+        color: white;
         text-shadow: none;
         text-shadow: -3px -3px 0 #000, 3px -3px 0 #000, -3px 3px 0 #000, 3px 3px 0 #000;
       }
@@ -80,7 +83,6 @@ body {
 .header-btns {
     display: flex;
     align-items: center;
-    /* margin-right: 15%; */
     list-style-type: none;
 }
 
@@ -97,11 +99,11 @@ html {
 
 a {
     text-decoration: none;
-    color: #40513B;
+    color: #4876ff;
 }
 
 .content {
-    background-color: #EDF1D6;
+    background-color: white;
     display: flex;
     flex-direction: column;
     flex: 1 1 auto;
@@ -111,8 +113,8 @@ a {
 }
 
 .footer {
-    background-color: #609966;
-    color: #EDF1D6;
+    background-color: #4876ff;
+    color: white;
     text-align: center;
     height: 60px;
     line-height: 60px;
