@@ -66,7 +66,7 @@ class Map:
 
         # URL
         self.mapUrl = 'https://www.google.com/maps/dir/'
-        self.address = 'Disneyland/'
+        self.uciAddress = 'UCI+Medical+Center,+101+The+City+Dr+S,+Orange,+CA+92868/'
         self.destination = ''
 
         self.calculate_b.bind('<Enter>', self.pointerEnter)
@@ -79,7 +79,7 @@ class Map:
         for text in destination_split:
             self.destination += text
             self.destination += '+'
-        url = self.mapUrl + self.address + self.destination
+        url = self.mapUrl + self.uciAddress + self.destination
         webbrowser.open(url=url, new=2, autoraise=True)
         self.destination = ''
 

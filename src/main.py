@@ -6,6 +6,7 @@ from cardpayment import CardPayment
 from map import Map
 from pwmanager import PasswordManager
 from authentication import Authenticator
+from refill import RefillTemplate
 import os
 import sys
 import json
@@ -15,8 +16,8 @@ import requests
 FONT = ('Bahnschrift Light', 17, 'normal')
 BG_COLOR = '#30323D'
 FG_COLOR = 'white'
-HOVER_BUTTON_COLOR = 'SlateGray4'
-ACTIVE_BG_COLOR = 'SlateGray2'
+HOVER_BUTTON_COLOR = '#424553'
+ACTIVE_BG_COLOR = '#878B9E'
 
 
 class MainApp(tk.Tk):
@@ -27,24 +28,27 @@ class MainApp(tk.Tk):
         self.config(bg=BG_COLOR)
         self.resizable(width=False, height=False)
         self.iconphoto(False, tk.PhotoImage(file='assets/img/atbs_icon.png'))
-        self.main_app_current_version = 'v4.6.2'
+        self.main_app_current_version = 'v5.0.0'
 
         self.button_images = []
         # Create buttons
-        self.cp_but = self.create_button(
+        self.cp_btn = self.create_button(
             'Payment', 'cc_icon.png', self.open_CardPaymentForm)
-        self.wud_but = self.create_button(
+        self.rf_btn = self.create_button(
+            'Refill', 'rx.png', self.open_RefillCoordination)
+        self.wud_btn = self.create_button(
             'Wrap Up', 'cal_calc.png', self.open_WrapUpDateCalculator)
-        self.m_but = self.create_button(
+        self.m_btn = self.create_button(
             'Map', 'map_icon.png', self.open_MapSearch)
-        self.pm_but = self.create_button(
+        self.pm_btn = self.create_button(
             'Password', 'lock_icon.png', self.open_PasswordManager)
 
         # Place buttons on grid
-        self.cp_but.grid(column=0, row=0, sticky='EW')
-        self.wud_but.grid(column=0, row=1, sticky='EW')
-        self.m_but.grid(column=0, row=2, sticky='EW')
-        self.pm_but.grid(column=0, row=3, sticky='EW')
+        self.cp_btn.grid(column=0, row=0, sticky='EW')
+        self.rf_btn.grid(column=0, row=1, sticky='EW')
+        self.wud_btn.grid(column=0, row=2, sticky='EW')
+        self.m_btn.grid(column=0, row=3, sticky='EW')
+        self.pm_btn.grid(column=0, row=4, sticky='EW')
 
         # Bind events
         self.bind('<Enter>', self.pointerEnter)
@@ -84,6 +88,10 @@ class MainApp(tk.Tk):
     def open_MapSearch(self):
         """Instantiate Map object in a new TopLevel window."""
         Map()
+
+    def open_RefillCoordination(self):
+        """Instantiate Refill Coordination object in a new TopLevel window."""
+        RefillTemplate()
 
     def open_PasswordManager(self):
         """Instantiate Password Manager in a new TopLevel window."""
@@ -165,7 +173,11 @@ class MainApp(tk.Tk):
             data = json.loads(latest_version_response.content)
             main_app_latest_version = data['main']
 
-        if self.main_app_current_version != main_app_latest_version:
+        with open('./dist/current_version/current_main_version.json') as f:
+            data = json.load(f)
+            current_main_app_version = data['main']
+
+        if current_main_app_version != main_app_latest_version:
             if yesno_update_message == 1:
                 message=f'{main_app_latest_version} is now available. Do you want to open App Update Manager?'
             elif yesno_update_message == 2:
