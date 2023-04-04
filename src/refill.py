@@ -1008,7 +1008,7 @@ class RefillTemplate:
                 if first_name and last_name:
                     return f'{first_name} {last_name}'
                 else:
-                    raise Exception()
+                    return ''
         except:
             return ''
 
