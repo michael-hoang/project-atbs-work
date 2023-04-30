@@ -1,607 +1,544 @@
 """This module contains a class that represents a card payment form GUI."""
 
-from tkinter import *
-from tkinter import messagebox
-from PyPDF2 import PdfReader, PdfWriter
-from datetime import datetime
-from PIL import Image, ImageTk
+import json
 import os
 import subprocess
 import sys
-import re
-import datetime as dt
-from calendar import monthrange
 import time
+import datetime as dt
+import tkinter as tk
+import ttkbootstrap as tkb
 
+from ttkbootstrap.constants import *
+from ttkbootstrap.dialogs import Messagebox
+from tkinter.ttk import Style
+from PyPDF2 import PdfReader, PdfWriter
+from settings import Settings
+from dateutil.relativedelta import relativedelta
 
-LABEL_BG = 'white'
-WINDOW_BG = 'white'
-ENTRY_BG = 'gray97'
-BUTTON_BG = 'RoyalBlue2'
-ACTIVE_BUTTON_BG = 'RoyalBlue3'
-HOVER_BUTTON_BG = 'RoyalBlue3'
-FONT = ('Calibri', 12, 'normal')
-PRINT_BUTTON_FONT = ('Calibri', 13, 'normal')
-ENTRY_FONT = ('Calibri', 11, 'normal')
-NOTES_FONT = ('Courier', 13, 'bold')
-NOTES_BG_COLOR = 'lemon chiffon'
+from refill import Refill
+from wrapup import WrapUp
 
-
-class CardPayment:
+class CardPayment(tkb.Labelframe):
     """
-    Models card payment interface to enter information and then outputs payment 
-    form in PDF.
+    Card Payment Form interface to automate printing of filled credit card forms.
     """
 
-    def __init__(self):
-        self.fields = {
-            'Date': datetime.today().strftime('%m-%d-%Y'),
+    def __init__(self,root, master):
+        super().__init__(master, text='', padding=15)
+        
+        self.style = Style()
+        self.style.configure('TButton', font=('', 9, ''))
+        self.root = root
+
+        self.check_user_settings_json()
+
+        # Form variables
+        self.card_no = tkb.StringVar(value='')
+        self.exp = tkb.StringVar(value='')
+        self.security_no = tkb.StringVar(value='')
+        self.address = tkb.StringVar(value='')
+        self.zip = tkb.StringVar(value='')
+        self.cardholder = tkb.StringVar(value='')
+        self.mrn = tkb.StringVar(value='')
+        self.med_1 = tkb.StringVar(value='')
+        self.med_2 = tkb.StringVar(value='')
+        self.med_3 = tkb.StringVar(value='')
+        self.med_4 = tkb.StringVar(value='')
+        self.med_5 = tkb.StringVar(value='')
+        self.price_1 = tkb.StringVar(value='')
+        self.price_2 = tkb.StringVar(value='')
+        self.price_3 = tkb.StringVar(value='')
+        self.price_4 = tkb.StringVar(value='')
+        self.price_5 = tkb.StringVar(value='')
+        
+        # Trace
+        self.price_1.trace('w', self.update_total)
+        self.price_2.trace('w', self.update_total)
+        self.price_3.trace('w', self.update_total)
+        self.price_4.trace('w', self.update_total)
+        self.price_5.trace('w', self.update_total)
+        self.card_no.trace('w', self.limit_card_number_size)
+        self.security_no.trace('w', self.limit_sec_code_len)
+
+        # Images
+        image_files = {
+            'AMEX': './assets/img/ae.png',
+            'Discover': './assets/img/di.png',
+            'MasterCard': './assets/img/mc.png',
+            'Visa': './assets/img/vi.png',
+        }
+
+        self.photoimages = []
+        for key, val in image_files.items():
+            self.photoimages.append(tkb.PhotoImage(name=key, file=val))
+
+        # Form entries
+        self.create_entries_column().pack(side=TOP, fill=X, expand=YES, pady=5)
+        self.create_card_info_entries().pack(side=LEFT, fill=X, expand=YES, pady=5, padx=(18,0))
+
+        # Buttons
+        self.create_buttonbox().pack(side=LEFT, fill=Y, padx=(18, 0), pady=(0, 1))
+
+        # Event bindings
+        self.cardnumber.winfo_children()[1].bind('<BackSpace>', self._do_backspace)
+        self.cardnumber.winfo_children()[1].bind('<Key>', self._check_card_number_format)
+        self.cardnumber.winfo_children()[1].bind('<KeyRelease>', self._delete_non_numeric_char)
+        self.security_ent.winfo_children()[1].bind('<KeyRelease>', self._delete_non_numeric_char_for_sec_code)
+        root.bind('<Control-Return>', self.submit_message_box)
+        # root.bind('<Control-s>', self.toggle_settings_window)
+        root.bind('<Control-n>', self.toggle_notes_window)
+   
+        # Register validation callbacks
+        self.valid_card_func = root.register(self._validate_card_number)
+        self.valid_digit_func = root.register(self._validate_only_digits)
+        self.valid_exp_func = root.register(self._validate_exp_date)
+        self.valid_sec_code_func = root.register(self._validate_security_code)
+
+        # Validate numeric entries
+        self.cardnumber.winfo_children()[1].configure(validate='focus', validatecommand=(self.valid_card_func, '%P'))
+        self.exp_ent.winfo_children()[1].configure(validate='focus', validatecommand=(self.valid_exp_func, '%P'))
+        self.zipcode.winfo_children()[1].configure(validate='key', validatecommand=(self.valid_digit_func, '%P'))
+        self.mrn_ent.winfo_children()[1].configure(validate='key', validatecommand=(self.valid_digit_func, '%P'))
+        self.security_ent.winfo_children()[1].configure(validate='focus', validatecommand=(self.valid_sec_code_func, '%P'))
+
+        # Initialize Settings window
+        self.settings = self.create_settings_window()
+        self.settings._check_always_on_top()
+
+        self.set_user_settings()
+
+        # Notes window
+        self.create_notes_window()
+
+        self.refill_mode_instantiated = False
+        if self.settings.current_settings['mode'] == 'Payment':
+            self.grid(padx=5, pady=(0, 5))
+        elif self.settings.current_settings['mode'] == 'Refill':
+            self.set_refill_mode(self.root)
+            self.refill_mode_instantiated = True
+
+        # After method
+        self.remove_files()
+        self.after(ms=3_600_000, func=self.remove_files) # after 1 hour
+
+    def create_long_form_entry(self, master, label, variable):
+        """Create a single long form entry."""
+        container = tkb.Frame(master)
+        lbl = tkb.Label(container, text=label, width=25, font=('', 9, ''))
+        lbl.pack(side=TOP, anchor='w')
+        ent = tkb.Entry(container, textvariable=variable, width=25, font=('', 9, ''))
+        ent.pack(side=LEFT, fill=X, expand=YES)
+        return container
+
+    def create_short_form_entry(self, master, label, variable):
+        """Create a single short form entry."""
+        container = tkb.Frame(master)
+        lbl = tkb.Label(container, text=label, width=13, font=('', 9, ''))
+        lbl.pack(side=TOP, anchor='w')
+        ent = tkb.Entry(container, textvariable=variable, width=8, font=('', 9, ''))
+        ent.pack(side=LEFT, fill=X, expand=YES)
+        return container
+
+    def create_card_info_entries(self):
+        """Create card payment information entries."""
+        container = tkb.Frame(self)
+        grid_para = {'pady': (4,0), 'sticky': 'w'}
+        self.cardnumber = self.create_long_form_entry(container, 'Card Number', self.card_no)
+        self.cardnumber.grid(column=0, row=0, columnspan=2, sticky='w')
+        card_img = self.create_card_image(container)
+        card_img.grid(column=1, row=0, sticky='e', padx=2, pady=(20,0))
+        self.exp_ent = self.create_short_form_entry(container, 'Exp', self.exp)
+        self.exp_ent.grid(column=0, row=1, **grid_para)
+        self.security_ent = self.create_short_form_entry(container, 'Security Code', self.security_no)
+        self.security_ent.grid(column=1, row=1, **grid_para)
+        cardholder = self.create_long_form_entry(container, 'Cardholder Name', self.cardholder)
+        cardholder.grid(column=0, row=2, columnspan=2, **grid_para)
+        address = self.create_long_form_entry(container, 'Billing Address', self.address)
+        address.grid(column=0, row=3, columnspan=2, **grid_para)
+        self.zipcode = self.create_short_form_entry(container, 'Zip Code', self.zip)
+        self.zipcode.grid(column=0, row=4, columnspan=2, **grid_para)
+        self.mrn_ent = self.create_short_form_entry(container, 'MRN', self.mrn)
+        self.mrn_ent.grid(column=1, row=4, columnspan=2, **grid_para)
+        return container
+
+    def create_list_entry(self, master, item_label, item_var, price_var):
+        """Create a single item form entry."""
+        container = tkb.Frame(master)
+        container.pack(fill=X, expand=YES)
+        item_lbl = tkb.Label(container, text=item_label, width=2, anchor='e', font=('', 9, ''))
+        item_lbl.pack(side=LEFT, padx=(0,3))
+        item_ent = tkb.Entry(container, textvariable=item_var, width=25, font=('', 9, ''))
+        item_ent.pack(side=LEFT, fill=X, expand=YES)
+        price_lbl = tkb.Label(container, text='$', width=2, anchor='e', font=('', 9, ''))
+        price_lbl.pack(side=LEFT, padx=(0,3))
+        price_ent = tkb.Entry(container, textvariable=price_var, width=10, font=('', 9, ''))
+        price_ent.pack(side=LEFT, fill=X, expand=YES)
+
+    def create_entries_column(self):
+        """Create a list column of 5 entries."""
+        container = tkb.Frame(self)
+        self.create_list_header(container)
+        self.create_list_entry(container, '1.', self.med_1, self.price_1)
+        self.create_list_entry(container, '2.', self.med_2, self.price_2)
+        self.create_list_entry(container, '3.', self.med_3, self.price_3)
+        self.create_list_entry(container, '4.', self.med_4, self.price_4)
+        self.create_list_entry(container, '5.', self.med_5, self.price_5)
+        return container
+    
+    def create_list_header(self, master):
+        """Create labels for the list header."""
+        container = tkb.Frame(master)
+        container.pack(fill=X, expand=YES)
+        item_col_lbl = tkb.Label(container, text='Medication', font=('', 9, ''))
+        item_col_lbl.pack(side=LEFT, padx=(70,0))
+        price_col_lbl = tkb.Label(container, text='Price', font=('', 9, ''))
+        price_col_lbl.pack(side=RIGHT, padx=(0,25))
+
+    def create_card_image(self, master):
+        """Create card network image."""
+        container = tkb.Frame(master)
+        self.image_lbl = tkb.Label(container, image='', border=0)
+        self.image_lbl.pack()
+        return container
+    
+    def create_buttonbox(self):
+        """Create the application buttonbox."""
+        container = tkb.Frame(self)
+        self.total_lbl = tkb.Label(container, text='$0.00', width=12, anchor='center', font=('', 9, ''))
+        self.total_lbl.pack(side=TOP)
+
+        self.sub_btn = tkb.Button(
+            master=container,
+            text="Submit",
+            command=lambda: self.submit_message_box(e=None),
+            bootstyle='DEFAULT',
+            width=9,
+            style='TButton',
+        )
+        self.sub_btn.pack(side=BOTTOM, pady=(0,4))
+        
+        set_btn = tkb.Button(
+            master=container,
+            text="Settings",
+            command=lambda: self.toggle_settings_window(e=None),
+            bootstyle=DARK,
+            width=9,
+            style='TButton.dark'
+        )
+        set_btn.pack(side=BOTTOM, pady=(0,12))
+
+        self.files_btn = tkb.Button(
+            master=container,
+            text="Files",
+            command=self.open_file_folder,
+            bootstyle=DARK,
+            width=9,
+            style='TButton.dark'
+        )
+        self.files_btn.pack(side=BOTTOM, pady=(0,12))
+
+        notes_btn = tkb.Button(
+            master=container,
+            text="Notes",
+            command=lambda: self.toggle_notes_window(e=None),
+            bootstyle=DARK,
+            width=9,
+            style='TButton.dark'
+        )
+        notes_btn.pack(side=BOTTOM, pady=(0,12))
+
+        return container
+    
+    def get_total(self) -> float:
+        """Calculate the total cost of medications."""
+        prices = (self.price_1, self.price_2, self.price_3, self.price_4, self.price_5)
+        total = 0
+        for price in prices:
+            try:
+                total += float(price.get().replace(',', ''))
+            except ValueError:
+                continue
+        
+        return total
+    
+    def update_total(self, *args):
+        """Update the total string variable."""
+        self.total_lbl['text'] = "${:,.2f}".format(self.get_total())
+    
+    def get_dict_fields(self) -> dict:
+        """Get a Python dictionary of field names and text values for PdfWriter."""
+        dict_fields = {
+            'Date': dt.datetime.today().strftime('%m-%d-%Y'),
             'Visa': '',
             'MasterCard': '',
             'Discover': '',
             'AMEX': '',
-            'Credit Card No': '',
-            'Exp': '',
-            'Security No': '',
-            'Cardholder Name': '',
-            'MRN': '',
-            'Medication Names 1': '',
-            'Medication Names 2': '',
-            'Medication Names 3': '',
-            'Medication Names 4': '',
-            'Medication Names 5': '',
-            'Cost': '',
-            'Cost 2': '',
-            'Cost 3': '',
-            'Cost 4': '',
-            'Cost 5': '',
-            'Total': '',
-            'Notes': '',
+            'Credit Card No': self.card_no.get(),
+            'Exp': self.exp.get(),
+            'Security No': self.security_no.get(),
+            'Billing Address': self.address.get(),
+            'Zip Code': self.zip.get(),
+            'Cardholder Name': self.cardholder.get(),
+            'MRN': self.mrn.get(),
+            'Medication Names 1': self.med_1.get(),
+            'Medication Names 2': self.med_2.get(),
+            'Medication Names 3': self.med_3.get(),
+            'Medication Names 4': self.med_4.get(),
+            'Medication Names 5': self.med_5.get(),
+            'Cost': self.price_1.get(),
+            'Cost 2': self.price_2.get(),
+            'Cost 3': self.price_3.get(),
+            'Cost 4': self.price_4.get(),
+            'Cost 5': self.price_5.get(),
+            'Total': '${:.2f}'.format(self.get_total()),
+            'Notes': self.notes_text_box.get(1.0, 'end-1c'), # -1c removes the added newline
         }
-
-        self.top = Toplevel()
-        self.top.withdraw()
-        self.top.attributes('-topmost', 0)
-        self.top.config(padx=20, pady=20, bg=WINDOW_BG)
-        self.top.resizable(width=False, height=False)
-        self.top.title("Card Payment Form")
-        self.top.after(ms=50, func=self.update_fields)
-        self.remove_files()
-        self.top.after(ms=3_600_000, func=self.remove_files) # after 1 hour
-
-        self.cc_icon = PhotoImage(file="assets/img/cc_icon.png")
-        self.top.iconphoto(False, self.cc_icon)
-
-        # Top buttons frame
-        self.top_btn_frame = Frame(self.top, background=WINDOW_BG)
-        self.top_btn_frame.grid(column=1, row=0, columnspan=5, rowspan=2)
-
-        # Always on top Checkbutton
-        self.alwaysTopVar = IntVar()
-        self.always_top_check_button = Checkbutton(self.top_btn_frame, text='Always on top', font=('Calibri', 10, 'normal'),
-                                                   variable=self.alwaysTopVar, onvalue=1, offvalue=0,
-                                                   command=self.always_top, bg=LABEL_BG, activebackground=LABEL_BG)
-        self.always_top_check_button.grid(
-            column=0, row=0, sticky='NW')
-
-        # Add Notes button
-        self.note_img = PhotoImage(file='./assets/img/note.png')
-        self.note_pin_img = PhotoImage(file='./assets/img/note_pin.png')
-        self.notes_button = Button(
-            self.top_btn_frame, image=self.note_img, font=FONT, bg=WINDOW_BG, relief='flat',
-            command=lambda: self.toggle_notes_window(event=None), borderwidth=0,
-            activebackground=WINDOW_BG
-            )
-        self.notes_button.grid(column=1, row=0, sticky='E', padx=(200, 0), pady=(0, 8))
-
-        # Add Notes Window
-        self.notes_window = Toplevel(self.top, bg=NOTES_BG_COLOR, padx=4, pady=4)
-        # self.notes_window.title('Add Notes')
-        self.notes_window.overrideredirect(True)
-        self.notes_window.resizable(width=False, height=False)
-        self.notes_isHidden = True
-        self.toggle_notes_window(event=None)
-        self.notes_window.protocol('WM_DELETE_WINDOW', func=lambda: self.toggle_notes_window(event=None))
-
-        self.notes_text = Text(
-            self.notes_window, height=8, width=26, font=NOTES_FONT, wrap=WORD,
-            bg=NOTES_BG_COLOR, relief='flat'
-            )
-        self.notes_text.grid(column=0, row=0, columnspan=2, padx=0, pady=0)
-
-            # Notes button Frame
-        self.notes_btn_frame = Frame(self.notes_window, bg=NOTES_BG_COLOR)
-        self.notes_btn_frame.grid(column=0, row=0, padx=(180, 0), pady=(135, 0))
-        self.check_img = PhotoImage(file='./assets/img/check_mark.png')
-        self.notes_ok_button = Button(
-            self.notes_btn_frame, image=self.check_img, font=FONT, bg=NOTES_BG_COLOR,
-            command=lambda: self.toggle_notes_window(event=None), relief='flat',
-            activebackground=NOTES_BG_COLOR, borderwidth=0
-            )
-        self.notes_ok_button.grid(column=0, row=1, sticky='E', padx=(0, 10), pady=(0, 5))
-        self.x_img = PhotoImage(file='./assets/img/x_mark.png')
-        self.notes_clear_button = Button(
-            self.notes_btn_frame, image=self.x_img, font=FONT, bg=NOTES_BG_COLOR,
-            command=lambda: self.clear_notes(event=None), relief='flat',
-            activebackground=NOTES_BG_COLOR, borderwidth=0
-            )
-        self.notes_clear_button.grid(column=1, row=1, sticky='W', padx=(10, 0), pady=(0, 5))
-
-        self.notes_window.bind('<Escape>', self.toggle_notes_window)
-        self.notes_window.bind('<Delete>', self.clear_notes)
-
-        # Card Button image
-        self.image_paths = [
-            "assets/img/generic_card.png",
-            "assets/img/amex.png",
-            "assets/img/discover.png",
-            "assets/img/mastercard.png",
-            "assets/img/visa.png"
-        ]
-
-        self.tk_images = {}
-
-        for image_path in self.image_paths:
-            with Image.open(fp=f"{image_path}") as i:
-                img = i.resize(size=(75, 50))
-                img_value = ImageTk.PhotoImage(img)
-            key = image_path.split("/")[-1]
-            image_key = key.split(".")[0]
-            self.tk_images[image_key] = img_value
-
-        self.card_button = Button(
-            self.top, image=self.tk_images["generic_card"], borderwidth=0, command=self.open_directory)
-        self.card_button.grid(
-            column=1, row=1, columnspan=2, rowspan=4, sticky="w")
-
-        self.date_text_label = Label(
-            self.top, text="Date:", bg=LABEL_BG, font=FONT)
-        self.date_text_label.grid(column=2, row=1, columnspan=2, sticky="E", rowspan=2, pady=(0, 18))
-        self.date_num_label = Label(
-            self.top, text=datetime.today().strftime('%m-%d-%Y'), bg=LABEL_BG, font=FONT)
-        self.date_num_label.grid(column=4, row=1, sticky="W", rowspan=2, pady=(0, 18))
-
-        self.cc_label = Label(
-            self.top, text="Credit Card No.", bg=LABEL_BG, font=FONT)
-        self.cc_label.grid(column=2, row=2, columnspan=2, sticky="E")
-        self.cc_entry = Entry(self.top, relief='flat',
-                              bg=ENTRY_BG, font=ENTRY_FONT)
-        self.cc_entry.grid(column=4, row=2)
-
-        self.exp_label = Label(self.top, text="Exp:", bg=LABEL_BG, font=FONT)
-        self.exp_label.grid(column=2, row=3, columnspan=2, sticky="E")
-        self.exp_entry = Entry(self.top, relief='flat',
-                               bg=ENTRY_BG, font=ENTRY_FONT)
-        self.exp_entry.grid(column=4, row=3)
-
-        self.cvv_label = Label(
-            self.top, text="Security No.", bg=LABEL_BG, font=FONT)
-        self.cvv_label.grid(column=2, row=4, columnspan=2, sticky="E")
-        self.cvv_entry = Entry(self.top, relief='flat',
-                               bg=ENTRY_BG, font=ENTRY_FONT)
-        self.cvv_entry.grid(column=4, row=4)
-
-        self.cardholder_label = Label(
-            self.top, text="Cardholder Name:", bg=LABEL_BG, font=FONT)
-        self.cardholder_label.grid(column=2, row=5, columnspan=2, sticky="E")
-        self.cardholder_entry = Entry(
-            self.top, relief='flat', bg=ENTRY_BG, font=ENTRY_FONT)
-        self.cardholder_entry.grid(column=4, row=5)
-
-        self.mrn_label = Label(self.top, text="MRN:", bg=LABEL_BG, font=FONT)
-        self.mrn_label.grid(column=2, row=6, columnspan=2, sticky="E")
-        self.mrn_entry = Entry(self.top, relief='flat',
-                               bg=ENTRY_BG, font=ENTRY_FONT)
-        self.mrn_entry.grid(column=4, row=6)
-
-        self.index_label1 = Label(self.top, text="1.", bg=LABEL_BG, font=FONT)
-        self.index_label1.grid(column=1, row=8, sticky="E")
-        self.index_label2 = Label(self.top, text="2.", bg=LABEL_BG, font=FONT)
-        self.index_label2.grid(column=1, row=9, sticky="E")
-        self.index_label3 = Label(self.top, text="3.", bg=LABEL_BG, font=FONT)
-        self.index_label3.grid(column=1, row=10, sticky="E")
-        self.index_label4 = Label(self.top, text="4.", bg=LABEL_BG, font=FONT)
-        self.index_label4.grid(column=1, row=11, sticky="E")
-        self.index_label5 = Label(self.top, text="5.", bg=LABEL_BG, font=FONT)
-        self.index_label5.grid(column=1, row=12, sticky="E")
-
-        self.medication_label = Label(
-            self.top, text="Medication Name(s)", bg=LABEL_BG, font=FONT)
-        self.medication_label.grid(column=2, row=7, sticky="EW", pady=(15, 0))
-
-        self.amount_label = Label(
-            self.top, text="Price", bg=LABEL_BG, font=FONT)
-        self.amount_label.grid(column=4, row=7, sticky="EW", pady=(15, 0))
-
-        self.med_entry1 = Entry(self.top, relief='flat',
-                                bg=ENTRY_BG, font=ENTRY_FONT)
-        self.med_entry1.grid(column=2, row=8)
-        self.dollar_label1 = Label(self.top, text="$", bg=LABEL_BG, font=FONT)
-        self.dollar_label1.grid(column=3, row=8, padx=5, sticky="E")
-        self.dollar_entry1 = Entry(
-            self.top, relief='flat', bg=ENTRY_BG, font=ENTRY_FONT)
-        self.dollar_entry1.grid(column=4, row=8)
-
-        self.med_entry2 = Entry(self.top, relief='flat',
-                                bg=ENTRY_BG, font=ENTRY_FONT)
-        self.med_entry2.grid(column=2, row=9)
-        self.dollar_label2 = Label(self.top, text="$", bg=LABEL_BG, font=FONT)
-        self.dollar_label2.grid(column=3, row=9, padx=5, sticky="E")
-        self.dollar_entry2 = Entry(
-            self.top, relief='flat', bg=ENTRY_BG, font=ENTRY_FONT)
-        self.dollar_entry2.grid(column=4, row=9)
-
-        self.med_entry3 = Entry(self.top, relief='flat',
-                                bg=ENTRY_BG, font=ENTRY_FONT)
-        self.med_entry3.grid(column=2, row=10)
-        self.dollar_label3 = Label(self.top, text="$", bg=LABEL_BG, font=FONT)
-        self.dollar_label3.grid(column=3, row=10, padx=5, sticky="E")
-        self.dollar_entry3 = Entry(
-            self.top, relief='flat', bg=ENTRY_BG, font=ENTRY_FONT)
-        self.dollar_entry3.grid(column=4, row=10)
-
-        self.med_entry4 = Entry(self.top, relief='flat',
-                                bg=ENTRY_BG, font=ENTRY_FONT)
-        self.med_entry4.grid(column=2, row=11)
-        self.dollar_label4 = Label(self.top, text="$", bg=LABEL_BG, font=FONT)
-        self.dollar_label4.grid(column=3, row=11, padx=5, sticky="E")
-        self.dollar_entry4 = Entry(
-            self.top, relief='flat', bg=ENTRY_BG, font=ENTRY_FONT)
-        self.dollar_entry4.grid(column=4, row=11)
-
-        self.med_entry5 = Entry(self.top, relief='flat',
-                                bg=ENTRY_BG, font=ENTRY_FONT)
-        self.med_entry5.grid(column=2, row=12)
-        self.dollar_label5 = Label(self.top, text="$", bg=LABEL_BG, font=FONT)
-        self.dollar_label5.grid(column=3, row=12, padx=5, sticky="E")
-        self.dollar_entry5 = Entry(
-            self.top, relief='flat', bg=ENTRY_BG, font=ENTRY_FONT)
-        self.dollar_entry5.grid(column=4, row=12)
-
-        self.total_text_label = Label(
-            self.top, text="Total", bg=LABEL_BG, font=('Helvetica', 11, 'bold'))
-        self.total_text_label.grid(column=3, row=13, sticky="E", pady=(8, 0))
-        self.total_num_label = Label(
-            self.top, text="", bg=LABEL_BG, font=('Helvetica', 11, 'bold'))
-        self.total_num_label.grid(column=4, row=13, sticky="", pady=(8, 0))
-
-        self.print_button = Button(
-            self.top, text="Print", command=lambda: self.message_box(event=None),
-            borderwidth=0, bg=BUTTON_BG, fg='white', padx=50, pady=1,
-            font=PRINT_BUTTON_FONT, activebackground=ACTIVE_BUTTON_BG,
-            activeforeground='white'
-            )
-        self.print_button.grid(
-            column=1, row=14, columnspan=4, pady=(15, 0))
-        self.print_button.bind('<Enter>', self.pointerEnter)
-        self.print_button.bind('<Leave>', self.pointerLeave)
-
-        # Center window to screen
-        self.top.update_idletasks()
-        win_width = self.top.winfo_reqwidth()
-        win_height = self.top.winfo_reqheight()
-        screen_width = self.top.winfo_screenwidth()
-        screen_height = self.top.winfo_screenheight()
-        x = int(screen_width/2 - win_width/2)
-        y = int(screen_height/2 - win_width/2)
-        self.top.geometry(f"{win_width}x{win_height}+{x}+{y}")
-        self.top.deiconify()
-        self.cc_entry.focus_set()
-
-        self.top.bind('<Control-Return>', self.message_box)
-        self.top.bind('<Control-n>', self.toggle_notes_window)
-
-    def pointerEnter(self, e):
-        """Highlight button on mouse hover."""
-        e.widget['bg'] = HOVER_BUTTON_BG
-
-    def pointerLeave(self, e):
-        """Remove highlight from button when mouse leave."""
-        e.widget['bg'] = BUTTON_BG
-
-    def always_top(self):
-        """Window always display on top."""
-        if self.alwaysTopVar.get() == 1:
-            self.top.attributes('-topmost', 1)
-        elif self.alwaysTopVar.get() == 0:
-            self.top.attributes('-topmost', 0)
-
-    def cc_length_check(self):
-        """Check length of credit card number to ensure correct number of digits are entered."""
-        entered_cc_num = re.sub(r'[^0-9]', '', self.cc_entry.get())
-        cc_length = len(entered_cc_num)
         try:
-            if cc_length == 0:
-                self.cc_label.config(fg='black')
-            elif entered_cc_num[0] == '3':
-                if cc_length == 15:
-                    self.cc_label.config(fg='black')
-                else:
-                    self.cc_label.config(fg='red')
-            else:
-                if cc_length == 16:
-                    self.cc_label.config(fg='black')
-                else:
-                    self.cc_label.config(fg='red')
-        except IndexError:
+            cardnumber = dict_fields['Credit Card No'].replace(' ', '')
+            if self.luhns_algo(cardnumber):
+                dict_fields[self.get_credit_card_network(cardnumber)] = 'X'
+        except:
             pass
 
-    def cvv_length_check(self):
-        """Check length of cvv to ensure correct number of digits are entered."""
-        # Replace all characters except (^) 0 through 9 with ''
-        entered_cc_num = re.sub(r'[^0-9]', '', self.cc_entry.get())
-        entered_cvv_num = re.sub(r'[^0-9]', '', self.cvv_entry.get())
-        cvv_length = len(entered_cvv_num)
-        try:
-            if cvv_length == 0:
-                self.cvv_label.config(fg='black')
-            elif entered_cc_num[0] == '3':
-                if cvv_length == 4:
-                    self.cvv_label.config(fg='black')
-                else:
-                    self.cvv_label.config(fg='red')
-            else:
-                if cvv_length == 3:
-                    self.cvv_label.config(fg='black')
-                else:
-                    self.cvv_label.config(fg='red')
-        except IndexError:
-            pass
-
-    def expiration_check(self):
-        """Check expiration date of payment card."""
-        # Replace all characters except (^) 0 through 9, /, and - with ''
-        entered_exp_date = re.sub(r'[^0-9/-]', '', self.exp_entry.get())
-        split_exp_date = re.split('[-/]', entered_exp_date)
-        exp_date_length = len(split_exp_date)
-        try:
-            if exp_date_length == 2:  # Only month and year
-                month = int(split_exp_date[0])
-                year = int(split_exp_date[1])
-                if len(str(year)) == 2:
-                    year = 2000 + year
-
-                day = monthrange(year, month)[1]
-                exp_date = dt.datetime(year, month, day)
-
-            elif exp_date_length == 3:  # Month, day, and year
-                month = int(split_exp_date[0])
-                day = int(split_exp_date[1])
-                year = int(split_exp_date[2])
-                if len(str(year)) == 2:
-                    year = 2000 + year
-
-                exp_date = dt.datetime(year, month, day)
-
-            today = dt.datetime.now()
-
-            if self.exp_entry.get() == '':
-                self.exp_label.config(fg='black')
-            elif exp_date < today:
-                self.exp_label.config(fg='red')
-            else:
-                self.exp_label.config(fg='black')
-        except (UnboundLocalError, ValueError):
-            self.exp_label.config(fg='red')
-
-    def update_fields(self):
-        """ 
-        Update self.fields attribute with information entered by user in the
-        payment form entry.
-        """
-
-        self.fields |= {
-            'Date': datetime.today().strftime('%m-%d-%Y'),
-            'Credit Card No': self.cc_entry.get().lstrip(),
-            'Exp': self.exp_entry.get(),
-            'Security No': self.cvv_entry.get(),
-            'Cardholder Name': self.cardholder_entry.get().lstrip(),
-            'MRN': self.mrn_entry.get(),
-            'Medication Names 1': self.med_entry1.get(),
-            'Medication Names 2': self.med_entry2.get(),
-            'Medication Names 3': self.med_entry3.get(),
-            'Medication Names 4': self.med_entry4.get(),
-            'Medication Names 5': self.med_entry5.get(),
-        }
-
-        if len(self.notes_text.get(1.0, 'end-1c').lstrip()) != 0:
-            self.fields |= {'Notes': f'         *** NOTE: ***\n' + self.notes_text.get(1.0, END)}
-        else:
-            self.fields |= {'Notes': ''}
-
-        self.date_num_label.config(text=datetime.today().strftime('%m-%d-%Y'))
-
-        if self.fields['Medication Names 1'] == "":
-            cost_1 = 0
-            self.fields['Cost'] = ""
-        else:
-            try:
-                cost_1 = float(self.dollar_entry1.get())
-            except ValueError:
-                cost_1 = 0
-                self.fields['Cost'] = ""
-            else:
-                self.fields['Cost'] = "${:,.2f}".format(cost_1)
-
-        if self.fields['Medication Names 2'] == "":
-            cost_2 = 0
-            self.fields['Cost 2'] = ""
-        else:
-            try:
-                cost_2 = float(self.dollar_entry2.get())
-            except ValueError:
-                cost_2 = 0
-                self.fields['Cost 2'] = ""
-            else:
-                self.fields['Cost 2'] = "${:,.2f}".format(cost_2)
-
-        if self.fields['Medication Names 3'] == "":
-            cost_3 = 0
-            self.fields['Cost 3'] = ""
-        else:
-            try:
-                cost_3 = float(self.dollar_entry3.get())
-            except ValueError:
-                cost_3 = 0
-                self.fields['Cost 3'] = ""
-            else:
-                self.fields['Cost 3'] = "${:,.2f}".format(cost_3)
-
-        if self.fields['Medication Names 4'] == "":
-            cost_4 = 0
-            self.fields['Cost 4'] = ""
-        else:
-            try:
-                cost_4 = float(self.dollar_entry4.get())
-            except ValueError:
-                cost_4 = 0
-                self.fields['Cost 4'] = ""
-            else:
-                self.fields['Cost 4'] = "${:,.2f}".format(cost_4)
-
-        if self.fields['Medication Names 5'] == "":
-            cost_5 = 0
-            self.fields['Cost 5'] = ""
-        else:
-            try:
-                cost_5 = float(self.dollar_entry5.get())
-            except ValueError:
-                cost_5 = 0
-                self.fields['Cost 5'] = ""
-            else:
-                self.fields['Cost 5'] = "${:,.2f}".format(cost_5)
-
-        total = cost_1 + cost_2 + cost_3 + cost_4 + cost_5
-        self.total_num_label.config(text="${:,.2f}".format(total))
-        self.fields['Total'] = "${:.2f}".format(total)
-
-        try:
-            if self.fields['Credit Card No'][0] == '3':
-                amex_img = self.tk_images["amex"]
-                self.card_button.config(image=amex_img)
-                self.fields |= {
-                'Visa': '',
-                'MasterCard': '',
-                'Discover': '',
-                'AMEX': 'X',
-                }
-            elif self.fields['Credit Card No'][0] == '4':
-                visa_img = self.tk_images["visa"]
-                self.card_button.config(image=visa_img)
-                self.fields |= {
-                'Visa': 'X',
-                'MasterCard': '',
-                'Discover': '',
-                'AMEX': '',
-                }
-            elif self.fields['Credit Card No'][0] == '5':
-                mastercard_img = self.tk_images["mastercard"]
-                self.card_button.config(image=mastercard_img)
-                self.fields |= {
-                'Visa': '',
-                'MasterCard': 'X',
-                'Discover': '',
-                'AMEX': '',
-                }
-            elif self.fields['Credit Card No'][0] == '6':
-                discover_img = self.tk_images["discover"]
-                self.card_button.config(image=discover_img)
-                self.fields |= {
-                'Visa': '',
-                'MasterCard': '',
-                'Discover': 'X',
-                'AMEX': '',
-                }
-        except IndexError:
-            generic_card_img = self.tk_images["generic_card"]
-            self.card_button.config(image=generic_card_img)
-            self.fields |= {
-                'Visa': '',
-                'MasterCard': '',
-                'Discover': '',
-                'AMEX': '',
-            }
-
-        self.cc_length_check()
-        self.cvv_length_check()
-        self.expiration_check()
-        self.add_pin_to_note_btn()
-
-        self.top.after(ms=50, func=self.update_fields)
-
+        return dict_fields
+    
+    def submit_message_box(self, e):
+        """Prompt user for confirmation when 'Submit' button is pressed."""
+        answer = Messagebox.yesno(
+            parent=self,
+            title='Confirm Submit',
+            message='Are you sure you want to submit?'
+        )
+        if answer == 'Yes':
+            self.export_pdf()
+            self.clear_all_entries()
+            self.sub_btn.config(text='Printing...')
+            self.sub_btn.after(5000, lambda: self.sub_btn.config(text='Submit'))
+            self.focus_force()
+    
     def export_pdf(self):
-        """Outputs payment information into a PDF form."""
-
-        name_list = self.fields['Cardholder Name'].split()
-        formatted_name = ""
-        for name in name_list:
-            formatted_name += name.lower()
-            formatted_name += "_"
-        formatted_name += self.fields['MRN']
-        formatted_file_name = f"{formatted_name}.pdf"
-
+        """Export payment information into a PDF form."""
+        cardholder = self.cardholder.get().split()
+        try:
+            file_name = f'{cardholder[0]}_{self.mrn.get()}.pdf'
+        except IndexError:
+            file_name = f'{self.mrn.get()}.pdf'
+            
+        fields = self.get_dict_fields()
         if getattr(sys, 'frozen', False):
             app_path = os.path.dirname(sys.executable)
         else:
             app_path = os.path.dirname(os.path.abspath(__file__))
 
-        abs_path = f"{app_path}\.tmp"
+        abs_path = f"{app_path}\.files"
         check_folder = os.path.isdir(abs_path)
         if not check_folder:
             os.makedirs(abs_path)
             subprocess.call(["attrib", "+h", abs_path]) # hidden directory
 
-        reader = PdfReader("assets/form/cardpayment.pdf")
+        reader = PdfReader("assets/form/cardpayment-form.pdf")
         writer = PdfWriter()
         page = reader.pages[0]
         writer.add_page(page)
-        writer.update_page_form_field_values(writer.pages[0], self.fields)
-        with open(f".tmp\{formatted_file_name}", "wb") as output_stream:
+        writer.update_page_form_field_values(writer.pages[0], fields)
+        with open(f".files\{file_name}", "wb") as output_stream:
             writer.write(output_stream)
 
-        self.clear_entries()
-        os.startfile(f"{app_path}\.tmp\{formatted_file_name}", "print")
+        os.startfile(f"{app_path}\.files\{file_name}", "print")
 
-    def clear_entries(self):
-        """Clear all entries."""
+    def get_credit_card_network(self, numbers: str) -> str or bool:
+        """Return AMEX, Discover, MasterCard, Visa, or False."""
+        prefix = int(numbers[:2])
+        length = len(numbers)
+        if prefix > 50 and prefix < 56 and length == 16:
+            return 'MasterCard'
+        elif (prefix == 34 or prefix == 37) and length == 15:
+            return 'AMEX'
+        elif numbers[0] == '4' and (length == 13 or length == 16):
+            return 'Visa'
+        elif numbers[:4] == '6011':
+            return 'Discover'
+        else:
+            return False
 
-        self.cc_entry.delete(0, END)
-        self.exp_entry.delete(0, END)
-        self.cvv_entry.delete(0, END)
-        self.cardholder_entry.delete(0, END)
-        self.mrn_entry.delete(0, END)
-        self.med_entry1.delete(0, END)
-        self.med_entry2.delete(0, END)
-        self.med_entry3.delete(0, END)
-        self.med_entry4.delete(0, END)
-        self.med_entry5.delete(0, END)
-        self.dollar_entry1.delete(0, END)
-        self.dollar_entry2.delete(0, END)
-        self.dollar_entry3.delete(0, END)
-        self.dollar_entry4.delete(0, END)
-        self.dollar_entry5.delete(0, END)
-        self.notes_text.delete(1.0, END)
+    def luhns_algo(self, numbers: str) -> bool:
+        """Return True if credit card numbers pass Luhn's Algorithm."""
+        sum1 = 0
+        sum2 = 0
+        for i in range(len(numbers)):
+            index = -(i + 1)
+            if (index % 2) == 0:
+                digit_x2_int = int(numbers[index]) * 2
+                digit_x2_str = str(digit_x2_int)
+                if len(digit_x2_str) > 1:
+                    sum2 += int(digit_x2_str[0]) + int(digit_x2_str[1])
+                else:
+                    sum2 += digit_x2_int
+            else:
+                sum1 += int(numbers[index])
+        # if the total modulo 10 is congruent to 0
+        if (sum1 + sum2) % 10 == 0:
+            return True
 
-    def message_box(self, event):
-        """Prompt user for confirmation when 'Done' button is clicked."""
+        return False
+    
+    def _do_backspace(self, e):
+        """Force backspace key to do backspace."""
+        cardnumber = self.card_no.get()
+        length = len(cardnumber)
+        try:
+            if cardnumber[-1] != ' ':
+                self.cardnumber.winfo_children()[1].delete(length, 'end')
+        except:
+            pass
+    
+    def _delete_non_numeric_char(self, e):
+        """Delete inputted characters that are non-numeric."""
+        cardnumber = self.card_no.get()
+        try:
+            if not cardnumber[-1].isdigit():
+                self.cardnumber.winfo_children()[1].delete(0, 'end')
+                self.cardnumber.winfo_children()[1].insert('end', cardnumber[:-1])
+        except:
+            pass
+    
+    def _delete_non_numeric_char_for_sec_code(self, e):
+        """Delete inputted characters that are non-numeric."""
+        sec_code = self.security_no.get()
+        try:
+            if not sec_code[-1].isdigit():
+                self.security_ent.winfo_children()[1].delete(0, 'end')
+                self.security_ent.winfo_children()[1].insert('end', sec_code[:-1])
+        except:
+            pass
+    
+    def _check_card_number_format(self, e):
+        """Format card numbers with spaces. (Ex. #### #### #### ####)"""
+        cardnumber = self.card_no.get()
+        length = len(cardnumber)
+        try:
+            if cardnumber[0] in ('4', '5', '6'):
+                if length in (4, 9, 14):
+                    self.cardnumber.winfo_children()[1].insert('end', ' ')
+                if length > 19:
+                    self.cardnumber.winfo_children()[1].set(cardnumber[:19])
+            elif cardnumber[0] == '3':
+                if length in (4, 11):
+                    self.cardnumber.winfo_children()[1].insert('end', ' ')
+                if length > 17:
+                    self.cardnumber.winfo_children()[1].set(cardnumber[:17])
+        except:
+            pass
+        
+    def _validate_card_number(self, card_numbers: str) -> bool:
+        """Validate that the input is a number and passes Luhn's algorithm."""
+        raw_num = card_numbers.replace(' ', '')
+        if raw_num.isdigit() and self.luhns_algo(raw_num):
+            try:
+                self.image_lbl.configure(image = self.get_credit_card_network(raw_num))
+            except:
+                pass
+            return True
+        elif card_numbers == '':
+            self.image_lbl.configure(image = '')
+            return True
+        else:
+            self.image_lbl.configure(image = '')
+            return False
+        
+    def _validate_only_digits(self, P: str) -> bool:
+        """Validate that the input is strictly a digit."""
+        if str.isdigit(P) or P == "":
+            return True
+        else:
+            return False
+        
+    def _validate_exp_date(self, P: str) -> bool:
+        """Validate that the inputted date is not expired."""
+        exp_str = P
+        date_fmt = ('%m/%y', '%m-%y', '%m/%Y', '%m-%Y')
+        for fmt in date_fmt:
+            try:
+                exp_date = dt.datetime.strptime(exp_str, fmt) + relativedelta(months=1) - relativedelta(days=1)
+                if exp_date > dt.datetime.today():
+                    return True
+            except ValueError:
+                pass
 
-        answer = messagebox.askyesno(
-            title="Confirm", message="Are you sure?", parent=self.top)
+        if exp_str == '':
+            return True
+        else:
+            return False
+        
+    def _validate_security_code(self, P: str) -> bool:
+        """Validate that the data is strictly a digit, and is only 3 or 4 chars long."""
+        sec_code = P
+        try:
+            first_digit = self.card_no.get()[0]
+            sec_code_len = len(sec_code)
+            for c in sec_code:
+                if not c.isdigit():
+                    return False
+                
+            if first_digit != '3':
+                if sec_code_len == 3 or sec_code == '':
+                    return True
+                return False
+            elif first_digit == '3':
+                if sec_code_len == 4 or sec_code == '':
+                    return True
+                return False
+        except:
+            pass
+        if sec_code == '':
+            return True
+        else:
+            return False
+        
+    def limit_sec_code_len(self, *args):
+        """Limit the number of characters depending on card network type"""
+        try:
+            first_digit = self.card_no.get()[0]
+            sec_code = self.security_no.get()
+            sec_code_len = len(sec_code)
+            if first_digit != '3' and sec_code_len > 3:
+                self.security_ent.winfo_children()[1].delete(0, 'end')
+                self.security_ent.winfo_children()[1].insert('end', sec_code[:3])
+            elif first_digit == '3' and sec_code_len > 4:
+                self.security_ent.winfo_children()[1].delete(0, 'end')
+                self.security_ent.winfo_children()[1].insert('end', sec_code[:4])
+        except IndexError:
+            pass
+            
+    def limit_card_number_size(self, *args):
+        """Limit the number of characters depending on card network type"""
+        cardnumber = self.card_no.get()
+        length = len(cardnumber)
+        try:
+            if cardnumber[0] in ('4', '5', '6'):
+                if length > 19:
+                    self.cardnumber.winfo_children()[1].delete(0, 'end')
+                    self.cardnumber.winfo_children()[1].insert('end', cardnumber[:19])
+            elif cardnumber[0] == '3':
+                if length > 17:
+                    self.cardnumber.winfo_children()[1].delete(0, 'end')
+                    self.cardnumber.winfo_children()[1].insert('end', cardnumber[:17])
+            else:
+                self.cardnumber.winfo_children()[1].delete(0, 'end')
+        except:
+            pass
 
-        if answer:
-            self.export_pdf()
-            self.cc_entry.focus_set()
-            self.clear_entries()
-
-    def open_directory(self):
-        """Opens directory containing exported credit card forms."""
-
+    def open_file_folder(self):
+        """Opens directory containing the exported card payment forms."""
+        self.files_btn.config(text='Opening...')
+        self.files_btn.after(2000, lambda: self.files_btn.config(text='Files'))
         if getattr(sys, 'frozen', False):
             app_path = os.path.dirname(sys.executable)
         else:
             app_path = os.path.dirname(os.path.abspath(__file__))
 
-        abs_path = f"{app_path}\.tmp"
+        abs_path = f"{app_path}\.files"
         check_folder = os.path.isdir(abs_path)
         if not check_folder:
             os.makedirs(abs_path)
@@ -609,8 +546,108 @@ class CardPayment:
 
         subprocess.Popen(f'explorer "{abs_path}"')
 
+    def clear_all_entries(self):
+        """Clear all entries on the form."""
+        outer_containers = self.winfo_children()
+        for outer_container in outer_containers:
+            inner_containers = outer_container.winfo_children()
+            for inner_container in inner_containers:
+                if inner_container.winfo_class() == 'TFrame':
+                    entry_widgets = inner_container.winfo_children()
+                    for entry_widget in entry_widgets:
+                        if entry_widget.winfo_class() == 'TEntry':
+                            entry_widget.delete(0, 'end')
+        self.notes_text_box.delete(1.0, END)
+        self.cardnumber.winfo_children()[1].focus_force()
+        self.exp_ent.winfo_children()[1].focus_force()
+        self.security_ent.winfo_children()[1].focus_force()              
+
+    def center_child_to_parent(self, child, parent, window_name):
+        """Center child window to parent window."""
+        parent_x = parent.winfo_x()
+        parent_y = parent.winfo_y()
+        parent_width = parent.winfo_reqwidth()
+        parent_height = parent.winfo_reqheight()
+        child_width = child.winfo_reqwidth()
+        child_height = child.winfo_reqwidth()
+        if window_name == 'notes':
+            dx = int((parent_width / 2)) - 120
+            dy = int((parent_height / 2)) - 75
+        elif window_name == 'settings':
+            dx = int((parent_width / 2)) - child_width / 2
+            dy = int((parent_height / 2)) - child_height / 2 - 160
+        child.geometry('+%d+%d' % (parent_x + dx, parent_y + dy))
+
+    def create_notes_window(self):
+        """Create Notes window."""
+        self.notes_window = tkb.Toplevel(self)
+        self.notes_window.title('Notes')
+        self.notes_window.geometry('240x150')
+        self.notes_window.resizable(False, False)
+        # self.notes_window.overrideredirect(True)
+        self.notes_text_box = tk.Text(self.notes_window, font=('Sergoe UI', 14, 'normal'), wrap=WORD)
+        self.notes_text_box.pack(expand=YES)
+        self.notes_isHidden = True
+        self.toggle_notes_window(e=None)
+        self.notes_window.protocol('WM_DELETE_WINDOW', func=lambda: self.toggle_notes_window(e=None))
+        self.notes_window.bind('<Escape>', self.toggle_notes_window)
+        
+
+    def toggle_notes_window(self, e):
+        """Toggle Notes window."""
+        if self.notes_isHidden:
+            self.notes_isHidden = False
+            self.lift()
+            self.root.attributes('-disabled', 0)
+            self.focus()
+            self.notes_window.withdraw()
+        else:
+            self.center_child_to_parent(self.notes_window, self.root, 'notes')
+            self.notes_isHidden = True
+            self.root.attributes('-disabled', 1)
+            self.notes_window.attributes('-topmost', 1)
+            self.notes_window.deiconify()
+            self.notes_text_box.focus()
+            
+
+    def create_settings_window(self):
+        """"Create the settings window."""
+        self.settings_window = tkb.Toplevel(self)
+        self.settings_window.title('Settings')
+        self.settings_window.resizable(False, False)
+        # self.settings_window.overrideredirect(True)
+        settings = Settings(self.settings_window, self)
+        self.settings_isHidden = True
+        self.toggle_settings_window(e=None)
+        self.settings_window.protocol('WM_DELETE_WINDOW', func=lambda: self.toggle_settings_window(e=None))
+        self.settings_window.bind('<Escape>', self.toggle_settings_window)
+        return settings
+    
+    def toggle_settings_window(self, e):
+        """Toggle Settings window."""
+        if self.settings_isHidden:
+            self.settings_isHidden = False
+            self.lift()
+            self.root.attributes('-disabled', 0)
+            self.focus()
+            self.settings_window.withdraw()
+            # Revert any unsaved changes to settings
+            try:
+                self.set_user_settings()
+            except AttributeError:
+                pass
+
+        else:
+            # self.settings_window.place_window_center()
+            self.center_child_to_parent(self.settings_window, self.root, 'settings')
+            self.settings_isHidden = True
+            self.root.attributes('-disabled', 1)
+            self.settings_window.attributes('-topmost', 1)
+            self.settings_window.deiconify()
+            self.settings_window.focus()
+
     def remove_files(self):
-        """Remove files in .tmp older than 7 days."""
+        """Remove files in .files older than 7 days."""
         
         current_time = time.time()
 
@@ -619,7 +656,7 @@ class CardPayment:
         else:
             app_path = os.path.dirname(os.path.abspath(__file__))
 
-        abs_path = f"{app_path}\.tmp"
+        abs_path = f"{app_path}\.files"
         check_folder = os.path.isdir(abs_path)
         if not check_folder:
             os.makedirs(abs_path)
@@ -631,50 +668,170 @@ class CardPayment:
             if (current_time - creation_time) // (24 * 3600) >= 7:
                 os.unlink(file_path)
 
-        self.top.after(ms=3_600_000, func=self.remove_files) # after 1 hour
+        self.after(ms=3_600_000, func=self.remove_files) # after 1 hour
+    
+    # Settings methods
 
-    def toggle_notes_window(self, event):
-        """Toggles Note window for CardPayment Form."""
-
-        if self.notes_isHidden:
-            self.notes_window.withdraw()
-            self.notes_isHidden = False
-            self.top.lift()
-            self.top.attributes('-disabled', 0)
-            self.top.focus_force()
+    def _get_program_path(self) -> str:
+        """Return the path to the running executable or script."""
+        if getattr(sys, 'frozen', False):
+            path = os.path.dirname(sys.executable)
         else:
-            # Center Notes window to Top window
-            top_x = self.top.winfo_x()
-            top_y = self.top.winfo_y()
-            top_width = self.top.winfo_reqwidth()
-            top_height = self.top.winfo_reqheight()
-            notes_width = self.notes_window.winfo_reqwidth()
-            notes_height = self.notes_window.winfo_reqheight()
-            dx = int((top_width / 2) - (notes_width / 2))
-            dy = int((top_height / 2) - (notes_height / 2))
-            self.notes_window.geometry('+%d+%d' % (top_x + dx, top_y + dy))
+            path = os.path.dirname(os.path.abspath(__file__))
 
-            self.notes_isHidden = True
-            self.top.attributes('-disabled', 1)
-            self.notes_window.attributes('-topmost', 1)
-            self.notes_window.deiconify()
-            self.notes_text.focus()
+        return path
+    
+    def _get_abs_path_to_data_directory(self) -> str:
+        """Return the absolute path to the '.data' directory."""
+        program_path = self._get_program_path()
+        directory_path = '.data'
+        directory_abs_path = os.path.join(program_path, directory_path)
+        return directory_abs_path
+    
+    def _get_settings_json_path(self) -> str:
+        """Return the absolute path to 'settings.json' file."""
+        directory_abs_path = self._get_abs_path_to_data_directory()
+        file_name = 'settings.json'
+        file_path = os.path.join(directory_abs_path, file_name)
+        return file_path
+    
+    def _check_data_directory_path(self):
+        """Create '.data' hidden directory if it doesn't exist."""
+        directory_abs_path = self._get_abs_path_to_data_directory()
+        if not os.path.isdir(directory_abs_path):
+            os.makedirs(directory_abs_path)
+            # make directory hidden
+            subprocess.call(["attrib", "+h", directory_abs_path])
+    
+    def _create_settings_json_file(self, file_path: str):
+        """Create settings.json."""
+        default_settings = {
+            'always_on_top': 'no',
+            'user': '',
+            'mode': 'Payment',
+            'theme': 'superhero',
+        }
+        with open(file_path, 'w') as f:
+            data = json.dumps(default_settings, indent=4)
+            f.write(data)
 
-    def clear_notes(self, event):
-        """Clear all text inside Notes text box."""
-        self.notes_text.delete(1.0, END)
-        self.toggle_notes_window(None)
+    def _check_settings_json_path(self):
+        """Create 'settings.json' file if it doesn't exist."""
+        settings_json_path = self._get_settings_json_path()
+        if not os.path.isfile(settings_json_path):
+            self._create_settings_json_file(settings_json_path)
 
-    def add_pin_to_note_btn(self):
-        """Add pin to Notes button if there are notes in text box."""
-        if len(self.notes_text.get(1.0, 'end-1c').lstrip()) == 0:
-            self.notes_button.config(image=self.note_img)
+    def check_user_settings_json(self):
+        """Ensures settings.json file exists."""
+        self._check_data_directory_path()
+        self._check_settings_json_path()
+
+    def _read_settings_json_file(self) -> dict:
+        """Read the 'settings.json' file."""
+        settings_json_path = self._get_settings_json_path()
+        with open(settings_json_path, 'r') as f:
+            data = json.load(f)
+        
+        return data
+
+    def _set_always_on_top_setting(self, user_settings: dict):
+        """Configure always on top setting."""
+        if user_settings['always_on_top'] == 'yes':
+            self.root.attributes('-topmost', 1)
+            self.settings.always_top_int_var.set(1)
+            self.settings.current_settings['always_on_top'] = 'yes'
         else:
-            self.notes_button.config(image=self.note_pin_img)
+            self.root.attributes('-topmost', 0)
+            self.settings.always_top_int_var.set(0)
+            self.settings.current_settings['always_on_top'] = 'no'
+
+    def _set_mode_setting(self, user_settings: dict):
+        """Configure mode setting."""
+        if user_settings['mode'] == 'Payment':
+            self.settings.mode_str_var.set('Payment')
+            self.settings.change_user_btn.config(state='disabled')
+            self.settings.current_settings['mode'] = 'Payment'
+        elif user_settings['mode'] == 'Refill':
+            self.settings.mode_str_var.set('Refill')
+            self.settings.change_user_btn.config(state='normal')
+            self.settings.current_settings['mode'] = 'Refill'
+
+    def _set_theme_setting(self, user_settings: dict):
+        """Configure theme setting."""
+        theme = user_settings['theme']
+        self.root._style.instance.theme_use(theme)
+        self.settings.current_settings['theme'] = theme
+        self.settings.themes_combobox.set(theme)
+        self.style.configure('TLabelframe.Label', font=('', 11, 'bold'))
+        self.style.configure('TRadiobutton', font=('', 10, ''))
+        self.style.configure('TButton', font=('', 9, ''))
+        self.style.configure('Roundtoggle.Toolbutton', font=('', 11, ''))  # broken
+        self.style.configure('TNotebook.Tab', font=('', 9, ''))
+
+    def _set_change_user_btn(self, user_settings: dict):
+        """Configure Change user button."""
+        if self.settings.current_settings['user']:
+            self.settings.change_user_btn.config(state='normal')
+        
+    def set_user_settings(self):
+        """Set user settings from settings.json file."""
+        user_settings = self._read_settings_json_file()
+        self._set_always_on_top_setting(user_settings)
+        self._set_mode_setting(user_settings)
+        self._set_theme_setting(user_settings)
+        self._set_change_user_btn(user_settings)
+
+    # Mode methods
+
+    def set_payment_mode(self):
+        """Set the mode to Payment. Used by Settings."""
+        try:
+            self.refill_frame.grid_remove()
+            self.wrapup_frame.grid_remove()
+        except:
+            pass
+
+        self.root.config(padx=0, pady=0)
+        self.config(text='')
+        self.grid_configure(padx=5, pady=(0, 5))
+        self.root.title('Card Payment Form')
+
+    def set_refill_mode(self, root):
+        """Set the mode to Refill."""
+        if not self.refill_mode_instantiated:
+            self.wrapup_frame = tkb.Labelframe(text='Wrap Up')
+            self.wrapup_frame.grid(row=0, column=1, sticky='ew', padx=(20, 0))
+            wrapup_inner_frame = tkb.Frame(self.wrapup_frame)
+            wrapup_inner_frame.pack()
+            self.wrapup = WrapUp(wrapup_inner_frame)
+            
+            self.refill_frame = tkb.Labelframe(root, text='Refill Coordination')
+            self.refill_frame.grid(column=0, row=0, rowspan=2, sticky='')
+            self.refill = Refill(root, self.refill_frame, self.wrapup, self.settings)
+
+            self.refill_mode_instantiated = True
+        else:
+            self.refill_frame.grid()
+            self.wrapup_frame.grid()
+
+        self.config(text='Card Payment')
+        self.grid_configure(row=1, column=1, padx=(20, 0), pady=(20, 0))
+
+        root.config(padx=20, pady=20)
+        first = self.settings.current_settings['user']['first_name']
+        last = self.settings.current_settings['user']['last_name']
+        full = f'{first} {last}'
+        root.title(f'Refill Coordination - {full}')
+        
 
 
 if __name__ == '__main__':
-    root = Tk()
-    cp = CardPayment()
+    app = tkb.Window(
+        'Card Payment Form', 'superhero', resizable=(False, False)
+    )
 
-    root.mainloop()
+    cardpayment = CardPayment(app, app)
+    app.place_window_center()
+    
+    # app._style.instance.theme_use('litera')
+    app.mainloop()
