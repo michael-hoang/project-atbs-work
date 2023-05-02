@@ -103,14 +103,15 @@ class MainApp(tkb.Window):
 if __name__ == '__main__':
     pfm = ProgramFileManager()
     pfm.download_essential_files(CURRENT_VERSION)
+    app = MainApp()
+    app.withdraw()
     try:
-        MainApp.check_for_new_updater_version(None)
-        if MainApp.check_for_main_app_update(None):
-            MainApp.open_Updater(None)
-        else:
-            app = MainApp()
+        app.check_for_new_updater_version()
+        if app.check_for_main_app_update():
+            app.open_Updater()
     except:
-        app = MainApp()
+        pass
 
     app.place_window_center()
+    app.deiconify()
     app.mainloop()

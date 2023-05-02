@@ -402,10 +402,12 @@ class Settings(tkb.Frame):
             refill_window = tkb.Toplevel(
                 title=f'Refill Coordination - {full}', resizable=(False, False)
             )
+            refill_window.withdraw()
             Refill(
                 self.cardpayment.root, refill_window, wrapup=None, settings=self
             )
             refill_window.place_window_center()
+            refill_window.deiconify()
         else:
             self._user_setup_window(changing_mode=False)
 
@@ -414,9 +416,11 @@ class Settings(tkb.Frame):
         wrapup_window = tkb.Toplevel(
             title='Wrap Up Calculator', resizable=(False, False)
         )
+        wrapup_window.withdraw()
         wrapup_window.config(padx=10)
         WrapUp(wrapup_window)
         wrapup_window.place_window_center()
+        wrapup_window.deiconify()
 
     def open_link_btn(self):
         """Open link to GitHub page."""
@@ -484,7 +488,6 @@ class Settings(tkb.Frame):
         selected_mode = self.mode_str_var.get()
         if selected_mode == 'Payment':
             self.current_settings['mode'] = 'Payment'
-            self.change_user_btn.config(state='disabled')
         elif selected_mode == 'Refill':
             if self.current_settings['user']:
                 self.current_settings['mode'] = 'Refill'
