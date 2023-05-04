@@ -8,11 +8,13 @@ from tkinter.ttk import Style
 from ttkbootstrap.constants import *
 from ttkbootstrap.tooltip import ToolTip
 
+from dropship import DropShipLookUp
+
 
 class Refill(tkb.Frame):
     """Refill Coordination form template."""
 
-    def __init__(self, root, master, wrapup, settings):
+    def __init__(self, root, master, wrapup, settings, refill_mode=False):
         """Initialize string variables, style, radio button states, and widgets."""
         super().__init__(master)
         self.pack(side=LEFT, fill=BOTH, expand=YES, pady=(10, 0))
@@ -677,6 +679,18 @@ class Refill(tkb.Frame):
         self.additional_notes_textbox = self.create_text_box(
             additional_notes_row_1
         )
+
+        # ========================== DROP SHIP ================================#
+
+        # Drop ship display frame (tab)
+        dropship_display_frame = tkb.Frame(master=self.notebook)
+        dropship_display_frame.pack()
+        self.notebook.add(dropship_display_frame, text='Drop Ship Look Up')
+
+        if refill_mode == False:
+            DropShipLookUp(master=dropship_display_frame, root=master)
+        else:
+            DropShipLookUp(master=dropship_display_frame, root=root)
 
     # Events and binds
         self.dispense_date_calendar.bind(

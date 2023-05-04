@@ -13,6 +13,7 @@ from ttkbootstrap.constants import *
 from ttkbootstrap.dialogs import Messagebox
 from tkinter.ttk import Style
 from PyPDF2 import PdfReader, PdfWriter
+from PyPDF2.generic import BooleanObject, NameObject, NumberObject, IndirectObject
 from settings import Settings
 from dateutil.relativedelta import relativedelta
 
@@ -317,6 +318,29 @@ class CardPayment(tkb.Labelframe):
             self.sub_btn.after(5000, lambda: self.sub_btn.config(text='Submit'))
             self.focus_force()
     
+    def _set_need_appearances_writer(self, writer: PdfWriter):
+        """
+        Enables PDF filled form values to be visible on the final PDF results
+
+        NOTE: See 12.7.2 and 7.7.2 for more information:
+        http://www.adobe.com/content/dam/acom/en/devnet/acrobat/pdfs/PDF32000_2008.pdf
+        """
+        try:
+            catalog = writer._root_object
+            # get the AcroForm tree
+            if "/AcroForm" not in catalog:
+                writer._root_object.update({
+                    NameObject("/AcroForm"): IndirectObject(len(writer._objects), 0, writer)
+                })
+
+            need_appearances = NameObject("/NeedAppearances")
+            writer._root_object["/AcroForm"][need_appearances] = BooleanObject(True)
+            return writer
+
+        except Exception as e:
+            print('set_need_appearances_writer() catch : ', repr(e))
+            return writer
+
     def export_pdf(self):
         """Export payment information into a PDF form."""
         cardholder = self.cardholder.get().split()
@@ -337,11 +361,29 @@ class CardPayment(tkb.Labelframe):
             os.makedirs(abs_path)
             subprocess.call(["attrib", "+h", abs_path]) # hidden directory
 
-        reader = PdfReader("assets/form/cardpayment-form.pdf")
+        reader = PdfReader(open("assets/form/cardpayment-form.pdf", "rb"), strict=False)
+        if "/AcroForm" in reader.trailer["/Root"]:
+            reader.trailer["/Root"]["/AcroForm"].update(
+                {NameObject("/NeedAppearances"): BooleanObject(True)}
+            )
+            
         writer = PdfWriter()
+        self._set_need_appearances_writer(writer)
+        if "/AcroForm" in writer._root_object:
+            writer._root_object["/AcroForm"].update(
+                {NameObject("/NeedAppearances"): BooleanObject(True)}
+            )
+
         page = reader.pages[0]
         writer.add_page(page)
         writer.update_page_form_field_values(writer.pages[0], fields)
+
+        # flatten pdf
+        writer_page = writer.get_page(0)
+        for annotation_index in range(0, len(writer_page["/Annots"])):
+            writer_annot = writer_page["/Annots"][annotation_index].get_object()
+            writer_annot.update({NameObject("/Ff"): NumberObject(1)})
+            
         with open(f".files\{file_name}", "wb") as output_stream:
             writer.write(output_stream)
 
@@ -807,7 +849,7 @@ class CardPayment(tkb.Labelframe):
             
             self.refill_frame = tkb.Labelframe(root, text='Refill Coordination')
             self.refill_frame.grid(column=0, row=0, rowspan=2, sticky='')
-            self.refill = Refill(root, self.refill_frame, self.wrapup, self.settings)
+            self.refill = Refill(root, self.refill_frame, self.wrapup, self.settings, refill_mode=True)
 
             self.refill_mode_instantiated = True
         else:
