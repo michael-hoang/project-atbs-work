@@ -350,7 +350,7 @@ class Settings(tkb.Frame):
                 pdf_writer.add_page(pdf_reader.pages[page_num])
 
         # Create a temporary file to write the output to
-        temp_output_path = os.path.join(program_path, '.files', 'blank_form.pdf')
+        temp_output_path = os.path.join(program_path, '.tmp', 'blank_form.pdf')
         with open(temp_output_path, 'wb') as out_file:
             pdf_writer.write(out_file)
 

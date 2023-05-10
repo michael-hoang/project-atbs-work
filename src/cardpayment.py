@@ -8,6 +8,7 @@ import time
 import datetime as dt
 import tkinter as tk
 import ttkbootstrap as tkb
+import win32api
 
 from ttkbootstrap.constants import *
 from ttkbootstrap.dialogs import Messagebox
@@ -19,6 +20,13 @@ from dateutil.relativedelta import relativedelta
 
 from refill import Refill
 from wrapup import WrapUp
+from encryption import MyEncryption
+from reprint import Reprint
+
+
+DAYS_EXPIRATION = 1
+SECONDS_PER_DAY = 86400
+
 
 class CardPayment(tkb.Labelframe):
     """
@@ -31,6 +39,7 @@ class CardPayment(tkb.Labelframe):
         self.style = Style()
         self.style.configure('TButton', font=('', 9, ''))
         self.root = root
+        self.encryption = MyEncryption()
 
         self.check_user_settings_json()
 
@@ -112,6 +121,9 @@ class CardPayment(tkb.Labelframe):
         # Notes window
         self.create_notes_window()
 
+        # Reprint window
+        self.create_reprint_window()
+
         self.refill_mode_instantiated = False
         if self.settings.current_settings['mode'] == 'Payment':
             self.grid(padx=5, pady=(0, 5))
@@ -120,8 +132,8 @@ class CardPayment(tkb.Labelframe):
             self.refill_mode_instantiated = True
 
         # After method
-        self.remove_files()
-        self.after(ms=3_600_000, func=self.remove_files) # after 1 hour
+        self._remove_files()
+        self.after(ms=300_000, func=self._remove_files) # after 5 minutes
 
     def create_long_form_entry(self, master, label, variable):
         """Create a single long form entry."""
@@ -231,8 +243,8 @@ class CardPayment(tkb.Labelframe):
 
         self.files_btn = tkb.Button(
             master=container,
-            text="Files",
-            command=self.open_file_folder,
+            text="Reprint",
+            command=lambda: self.toggle_reprint_window(e=None),
             bootstyle=DARK,
             width=9,
             style='TButton.dark'
@@ -267,7 +279,7 @@ class CardPayment(tkb.Labelframe):
         """Update the total string variable."""
         self.total_lbl['text'] = "${:,.2f}".format(self.get_total())
     
-    def get_dict_fields(self) -> dict:
+    def _get_dict_fields(self) -> dict:
         """Get a Python dictionary of field names and text values for PdfWriter."""
         dict_fields = {
             'Date': dt.datetime.today().strftime('%m-%d-%Y'),
@@ -312,12 +324,110 @@ class CardPayment(tkb.Labelframe):
             message='Are you sure you want to submit?'
         )
         if answer == 'Yes':
-            self.export_pdf()
+            data = self._create_data_structure()
+            reference_id = list(data.keys())[0]
+            fields = data[reference_id]['fields']
+            self._export_to_json(data)
+            pdf_file_path = self.write_pdf(reference_id, fields)
+            self._print_default(pdf_file_path)
             self.clear_all_entries()
             self.sub_btn.config(text='Printing...')
             self.sub_btn.after(5000, lambda: self.sub_btn.config(text='Submit'))
             self.focus_force()
+
+    def _get_epoch_creation_time(self) -> int:
+        """Return the current epoch time."""
+        epoch_current_time = int(time.time())
+        return epoch_current_time
     
+    def _format_epoch_time(self, epoch_time: int) -> str:
+        """Format epoch time into 24H format without colons."""
+        dt_obj = dt.datetime.fromtimestamp(epoch_time)
+        time_str = dt_obj.strftime('%H%M%S')
+        return time_str
+
+    def _generate_reference_id(self, cardholder, mrn, ctime ) -> str:
+        """Generate a reference ID for the card payment information."""
+        fmt_ctime = self._format_epoch_time(ctime)
+        cardholder_split = cardholder.split()
+        try:
+            reference_id = f'{fmt_ctime}-{mrn}-{cardholder_split[0].lower()}'
+        except:
+            reference_id = f'{fmt_ctime}-{mrn}'
+
+        return reference_id
+
+    def _create_data_structure(self) -> dict:
+        """Create data structure to store information."""
+        fields = self._get_dict_fields()
+        cardholder = fields['Cardholder Name']
+        mrn = fields['MRN']
+        ctime = self._get_epoch_creation_time()
+        reference_id = self._generate_reference_id(cardholder, mrn, ctime)
+
+        data = {
+            reference_id: {
+                'epoch_ctime': ctime,
+                'fields': fields
+            }
+        }
+
+        return data
+    
+    def _encrypt_data(self, data) -> dict:
+        """Encrypt data using MyEncryption."""
+        encrypted_data = {}
+        for ref_id in data:
+            encrypted_ref_id = self.encryption.encrypt(ref_id)
+            epoch_ctime = data[ref_id]['epoch_ctime']
+            encrypted_data[encrypted_ref_id] = {
+                'epoch_ctime': epoch_ctime,
+                'fields': {}
+            }
+            fields = data[ref_id]['fields']
+            for k, v in fields.items():
+                encrypted_k = self.encryption.encrypt(k)
+                encrypted_v = self.encryption.encrypt(v)
+                encrypted_data[encrypted_ref_id]['fields'][encrypted_k] = encrypted_v
+
+        return encrypted_data
+              
+    def _decrypt_data(self, data) -> dict:
+        """Decrypt data using MyEncryption."""
+        decrypted_data = {}
+        for ref_id in data:
+            decrypted_ref_id = self.encryption.decrypt(ref_id)
+            epoch_ctime = data[ref_id]['epoch_ctime']
+            decrypted_data[decrypted_ref_id] = {
+                'epoch_ctime': epoch_ctime,
+                'fields': {}
+            }
+            fields = data[ref_id]['fields']
+            for k, v in fields.items():
+                decrypted_k = self.encryption.decrypt(k)
+                decrypted_v = self.encryption.decrypt(v)
+                decrypted_data[decrypted_ref_id]['fields'][decrypted_k] = decrypted_v
+
+        return decrypted_data
+
+    def _export_to_json(self, new_data):
+        """Export data to json file."""
+        data_dir_path = self._get_abs_path_to_data_directory()
+        json_file_path = os.path.join(data_dir_path, 'data.json')
+        encrypted_data = self._encrypt_data(new_data)
+        # If json file exists
+        if os.path.isfile(json_file_path):
+            with open(json_file_path, 'r') as f:
+                data = json.load(f) 
+        
+            data.update(encrypted_data)
+            with open(json_file_path, 'w') as f:
+                json.dump(data, f, indent=4)
+        else:
+            with open(json_file_path, 'w') as f:
+                json.dump(encrypted_data, f, indent=4)
+            
+        
     def _set_need_appearances_writer(self, writer: PdfWriter):
         """
         Enables PDF filled form values to be visible on the final PDF results
@@ -341,21 +451,17 @@ class CardPayment(tkb.Labelframe):
             print('set_need_appearances_writer() catch : ', repr(e))
             return writer
 
-    def export_pdf(self):
-        """Export payment information into a PDF form."""
-        cardholder = self.cardholder.get().split()
-        try:
-            file_name = f'{cardholder[0]}_{self.mrn.get()}.pdf'
-        except IndexError:
-            file_name = f'{self.mrn.get()}.pdf'
-            
-        fields = self.get_dict_fields()
+    def write_pdf(self, reference_id, fields) -> str:
+        """
+        Export payment information into a temporary PDF file and return the file path.
+        """
+        file_name = f'{reference_id}.pdf'
         if getattr(sys, 'frozen', False):
             app_path = os.path.dirname(sys.executable)
         else:
             app_path = os.path.dirname(os.path.abspath(__file__))
 
-        abs_path = f"{app_path}\.files"
+        abs_path = f"{app_path}\.tmp"
         check_folder = os.path.isdir(abs_path)
         if not check_folder:
             os.makedirs(abs_path)
@@ -384,10 +490,24 @@ class CardPayment(tkb.Labelframe):
             writer_annot = writer_page["/Annots"][annotation_index].get_object()
             writer_annot.update({NameObject("/Ff"): NumberObject(1)})
             
-        with open(f".files\{file_name}", "wb") as output_stream:
+        with open(f".tmp\{file_name}", "wb") as output_stream:
             writer.write(output_stream)
 
-        os.startfile(f"{app_path}\.files\{file_name}", "print")
+        return f"{app_path}\.tmp\{file_name}"
+
+    def _print_default(self, file_path):
+        """Print to the default printer."""
+        os.startfile(file_path, "print")
+
+    def _print_from_selected_printer(self, file_path):
+        """Print file from the selected printer."""
+        # default_printer = self.reprint._get_default_printer()
+        selected_printer = self.reprint.selected_printer.get().strip()
+        if selected_printer in self.reprint._get_printer_list():
+            # win32print.SetDefaultPrinter(selected_printer)
+            # os.startfile(file_path, "print")
+            win32api.ShellExecute(0, 'printto', file_path, f'"{selected_printer}"', '.', 0)
+            # win32print.SetDefaultPrinter(default_printer)
 
     def get_credit_card_network(self, numbers: str) -> str or bool:
         """Return AMEX, Discover, MasterCard, Visa, or False."""
@@ -571,22 +691,91 @@ class CardPayment(tkb.Labelframe):
         except:
             pass
 
-    def open_file_folder(self):
-        """Opens directory containing the exported card payment forms."""
-        self.files_btn.config(text='Opening...')
-        self.files_btn.after(2000, lambda: self.files_btn.config(text='Files'))
-        if getattr(sys, 'frozen', False):
-            app_path = os.path.dirname(sys.executable)
+    def _get_fields_from_json(self, reference_id) -> dict:
+        """Return saved fields data from data.json."""
+        data_dir_path = self._get_abs_path_to_data_directory()
+        json_file_path = os.path.join(data_dir_path, 'data.json')
+        with open(json_file_path, 'r') as f:
+            data = json.load(f)
+
+        decrypted_data = self._decrypt_data(data)
+        fields = decrypted_data[reference_id]['fields']
+        return fields
+    
+    def _delete_expired_items(self):
+        """Recursively delete expired items from data.json."""
+        if not self.reprint_isHidden:
+            data_dir_path = self._get_abs_path_to_data_directory()
+            json_file_path = os.path.join(data_dir_path, 'data.json')
+            try:
+                with open(json_file_path, 'r') as f:
+                    data = json.load(f)
+
+                decrypted_data = self._decrypt_data(data)
+                current_epoch_time = time.time()
+                to_be_deleted = []
+                for ref_id in decrypted_data:
+                    epoch_ctime = decrypted_data[ref_id]['epoch_ctime']
+                    if (current_epoch_time - epoch_ctime) / SECONDS_PER_DAY >= DAYS_EXPIRATION:
+                        to_be_deleted.append(ref_id)
+
+                for ref_id in to_be_deleted:
+                    del decrypted_data[ref_id]
+
+                # Write updated data to json file
+                encrypted_data = self._encrypt_data(decrypted_data)
+                with open(json_file_path, 'w') as f:
+                    json.dump(encrypted_data, f, indent=4)
+            except:
+                pass
+            self.reprint._refresh_treeview()
+            self.reprint_window.after(1000, self._delete_expired_items)
+
+    def reprint_command(self):
+        """Reprint the selected item from Treeview window."""
+        try:
+            reference_id = self.reprint._get_reference_id()
+            if reference_id:
+                fields = self._get_fields_from_json(reference_id)
+                pdf_file_path = self.write_pdf(reference_id, fields)
+                self._print_from_selected_printer(pdf_file_path)
+                self.reprint.button.config(text='Printing...')
+                self.reprint.button.after(
+                    5000, lambda: self.reprint.button.config(text='Print')
+                )
+        except:
+            pass
+
+    def create_reprint_window(self):
+        """Open Treeview window for reprinting."""
+        self.reprint_window = tkb.Toplevel(
+            title='Reprint',
+            resizable=(False, False)
+        )
+        self.reprint_window.withdraw()
+        self.reprint = Reprint(self.reprint_window, self.reprint_command)
+        self.reprint_isHidden = True
+        self.reprint_window.protocol(
+            'WM_DELETE_WINDOW', lambda: self.toggle_reprint_window(e=None)
+        )
+        self.reprint_window.bind('<Escape>', self.toggle_reprint_window)
+
+    def toggle_reprint_window(self, e):
+        """Toggle Reprint window."""
+        if not self.reprint_isHidden:
+            self.reprint_isHidden = True
+            self.lift()
+            self.root.attributes('-disabled', 0)
+            self.focus()
+            self.reprint_window.withdraw()
         else:
-            app_path = os.path.dirname(os.path.abspath(__file__))
-
-        abs_path = f"{app_path}\.files"
-        check_folder = os.path.isdir(abs_path)
-        if not check_folder:
-            os.makedirs(abs_path)
-            subprocess.call(["attrib", "+h", abs_path]) # hidden directory
-
-        subprocess.Popen(f'explorer "{abs_path}"')
+            self.reprint_isHidden = False
+            self._delete_expired_items()
+            self.center_child_to_parent(self.reprint_window, self.root, 'reprint')
+            self.root.attributes('-disabled', 1)
+            self.reprint_window.attributes('-topmost', 1)
+            self.reprint_window.deiconify()
+            self.reprint_window.focus()
 
     def clear_all_entries(self):
         """Clear all entries on the form."""
@@ -618,6 +807,9 @@ class CardPayment(tkb.Labelframe):
         elif window_name == 'settings':
             dx = int((parent_width / 2)) - child_width / 2
             dy = int((parent_height / 2)) - child_height / 2 - 160
+        elif window_name == 'reprint':
+            dx = int((parent_width / 2)) - child_width / 2
+            dy = int((parent_height / 2)) - child_height / 2 + 100
         child.geometry('+%d+%d' % (parent_x + dx, parent_y + dy))
 
     def create_notes_window(self):
@@ -631,7 +823,7 @@ class CardPayment(tkb.Labelframe):
         self.notes_text_box.pack(expand=YES)
         self.notes_isHidden = True
         self.toggle_notes_window(e=None)
-        self.notes_window.protocol('WM_DELETE_WINDOW', func=lambda: self.toggle_notes_window(e=None))
+        self.notes_window.protocol('WM_DELETE_WINDOW', lambda: self.toggle_notes_window(e=None))
         self.notes_window.bind('<Escape>', self.toggle_notes_window)
         
 
@@ -688,17 +880,14 @@ class CardPayment(tkb.Labelframe):
             self.settings_window.deiconify()
             self.settings_window.focus()
 
-    def remove_files(self):
+    def _remove_files(self):
         """Remove files in .files older than 7 days."""
-        
-        current_time = time.time()
-
         if getattr(sys, 'frozen', False):
             app_path = os.path.dirname(sys.executable)
         else:
             app_path = os.path.dirname(os.path.abspath(__file__))
 
-        abs_path = f"{app_path}\.files"
+        abs_path = f"{app_path}\.tmp"
         check_folder = os.path.isdir(abs_path)
         if not check_folder:
             os.makedirs(abs_path)
@@ -706,11 +895,9 @@ class CardPayment(tkb.Labelframe):
 
         for f in os.listdir(path=abs_path):
             file_path = os.path.join(abs_path, f)
-            creation_time = os.path.getctime(file_path)
-            if (current_time - creation_time) // (24 * 3600) >= 7:
-                os.unlink(file_path)
+            os.unlink(file_path)
 
-        self.after(ms=3_600_000, func=self.remove_files) # after 1 hour
+        self.after(ms=300_000, func=self._remove_files) # after 5 minutes
     
     # Settings methods
 
@@ -751,7 +938,7 @@ class CardPayment(tkb.Labelframe):
             'always_on_top': 'no',
             'user': '',
             'mode': 'Payment',
-            'theme': 'superhero',
+            'theme': 'litera',
         }
         with open(file_path, 'w') as f:
             data = json.dumps(default_settings, indent=4)
@@ -869,7 +1056,7 @@ class CardPayment(tkb.Labelframe):
 
 if __name__ == '__main__':
     app = tkb.Window(
-        'Card Payment Form', 'superhero', resizable=(False, False)
+        'Card Payment Form', 'litera', resizable=(False, False)
     )
 
     cardpayment = CardPayment(app, app)

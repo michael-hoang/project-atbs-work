@@ -59,6 +59,15 @@ class ProgramFileManager:
         if not os.path.isdir(self.hdata_dir_path):
             os.makedirs(self.hdata_dir_path)
             subprocess.call(['attrib', '+h', self.hdata_dir_path])  # hidden
+    
+    def create_hidden_temp_directory(self):
+        """
+        Create a hidden directory called '.tmp'.
+        """
+        self.htemp_dir_path = os.path.join(self.root_path, '.tmp')
+        if not os.path.isdir(self.htemp_dir_path):
+            os.makedirs(self.htemp_dir_path)
+            subprocess.call(['attrib', '+h', self.htemp_dir_path])  # hidden
 
     def create_required_directories(self):
         """
@@ -66,6 +75,7 @@ class ProgramFileManager:
         the Main app. The paths are stored in a Python dictionary as an attribute.
         """
         self.create_hidden_data_directory()
+        self.create_hidden_temp_directory()
         directories = {
             'assets': os.path.join(self.root_path, 'assets'),
             'form': os.path.join(self.root_path, 'assets', 'form'),
