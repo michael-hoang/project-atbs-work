@@ -60,7 +60,7 @@ header a {
 /* Hero section styles */
 
 #hero {
-    height: calc(100vh - 60px);
+    height: calc(100vh - 40px);
     display: flex;
     justify-content: center;
     align-items: center;
