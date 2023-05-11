@@ -84,17 +84,42 @@ header a {
     display: inline-block;
     padding: 20px 40px;
     font-size: 24px;
+    color: #fff;
     background-color: #4caf50;
     border: none;
     border-radius: 5px;
     box-shadow: 0px 5px 10px rgba(0, 0, 0, 0.3);
+    position: relative;
+    overflow: hidden;
     transition: all 0.3s ease-in-out;
-}
-
-#hero .btn:hover {
-    transform: translateY(-5px);
+  }
+  
+  #hero .btn::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 0;
+    height: 0;
+    background-color: rgba(255, 255, 255, 0.3);
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    opacity: 0;
+    transition: all 0.5s ease-in-out;
+  }
+  
+  #hero .btn:hover::before {
+    width: 500px;
+    height: 500px;
+    opacity: 1;
+  }
+  
+  #hero .btn:hover {
     box-shadow: 0px 10px 20px rgba(0, 0, 0, 0.3);
-}
+    background-color: #3ab83e;
+    transform: scale(1.08);
+  }
+  
 
 /* Features section styles */
 #features {
@@ -210,3 +235,112 @@ footer p {
     font-size: 16px;
     margin: 0;
 }
+
+
+/* Page loading animation */
+
+/* Add classes to hide elements initially */
+.container,
+#logo-img,
+h1,
+p {
+  opacity: 0;
+  transform: translateY(-20px);
+}
+
+/* Add animation to show elements one at a time */
+.container {
+  animation: fade-in 1s ease-out forwards;
+}
+
+#logo-img {
+  animation-delay: 1s;
+  animation-name: fade-in;
+  animation-duration: 0.5s;
+  animation-timing-function: ease-out;
+  animation-fill-mode: forwards;
+}
+
+h1 {
+  animation-delay: 0.5s;
+  animation-name: fade-in;
+  animation-duration: 1.25s;
+  animation-timing-function: ease-out;
+  animation-fill-mode: forwards;
+}
+
+p {
+  animation-delay: 0.75s;
+  animation-name: fade-in;
+  animation-duration: 1s;
+  animation-timing-function: ease-out;
+  animation-fill-mode: forwards;
+}
+
+/* Define the fade-in animation */
+@keyframes fade-in {
+  0% {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.btn {
+    animation: zoomIn 0.5s ease-in-out;
+  }
+  
+  @keyframes zoomIn {
+    0% {
+      transform: scale(0);
+    }
+    50% {
+      transform: scale(1.1);
+    }
+    100% {
+      transform: scale(1);
+    }
+  }
+  
+  #logo-img {
+    opacity: 0;
+    transform: scale(0.5);
+    animation: logoZoomIn 0.5s ease-in-out 0s forwards;
+  }
+  
+  @keyframes logoZoomIn {
+    0% {
+      opacity: 0;
+      transform: scale(0.5);
+    }
+    50% {
+      opacity: 1;
+      transform: scale(1.1);
+    }
+    100% {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+  
+  .image-switcher {
+    background-image: url('./resources/img/robot_logo.png');
+    animation-delay: 2s;
+    animation: imageSwitcher 10s infinite;
+  }
+  
+  @keyframes imageSwitcher {
+    0% {
+      background-image: url('./resources/img/robot_logo.png');
+    }
+    50% {
+      background-image: url('image2.jpg');
+    }
+    100% {
+      background-image: url('./resources/img/robot_logo.png');
+    }
+  }
+  
