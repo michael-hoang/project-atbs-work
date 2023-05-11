@@ -98,9 +98,15 @@ header a {
 
 /* Features section styles */
 #features {
-    scroll-margin-top: 100px;
-    /* add extra space before scrolling */
+    height: calc(100vh - 60px);
+    scroll-margin-top: 100px; /* add extra space before scrolling */
     padding: 100px 0;
+}
+
+#features h2 {
+    text-align: center;
+    font-size: 36px;
+    margin-bottom: 30px;
 }
 
 #features ul {
@@ -148,4 +154,31 @@ footer {
 footer p {
     font-size: 16px;
     margin: 0;
+}
+
+/* Style for updates section */
+#updates {
+    height: calc(80vh - 60px);
+    scroll-margin-top: 100px; /* add extra space before scrolling */
+    padding: 50px 0;
+}
+
+#updates h2 {
+    text-align: center;
+    font-size: 36px;
+    margin-bottom: 30px;
+}
+
+#updates ul {
+    list-style: none;
+    padding: 0;
+    margin: 0 auto;
+    max-width: 500px;
+}
+
+#updates li {
+    font-size: 20px;
+    line-height: 1.5;
+    padding: 10px;
+    border-bottom: 1px solid #ddd;
 }
