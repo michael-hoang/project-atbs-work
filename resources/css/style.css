@@ -325,22 +325,3 @@ p {
       transform: scale(1);
     }
   }
-  
-  .image-switcher {
-    background-image: url('./resources/img/robot_logo.png');
-    animation-delay: 2s;
-    animation: imageSwitcher 10s infinite;
-  }
-  
-  @keyframes imageSwitcher {
-    0% {
-      background-image: url('./resources/img/robot_logo.png');
-    }
-    50% {
-      background-image: url('image2.jpg');
-    }
-    100% {
-      background-image: url('./resources/img/robot_logo.png');
-    }
-  }
-  
