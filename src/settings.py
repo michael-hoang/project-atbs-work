@@ -167,7 +167,7 @@ class Settings(tkb.Frame):
 
         title_label = self.create_label(
             master=info_labelframe,
-            text='Card Payment App'
+            text='My Pharmacy Buddy App'
         )
 
         title_label.pack_configure(side=TOP)
@@ -411,10 +411,12 @@ class Settings(tkb.Frame):
                 title=f'Refill Coordination - {full}', resizable=(False, False)
             )
             refill_window.withdraw()
+            # refill_window.iconbitmap('./assets/img/robot_icon_title.ico')
             Refill(
                 self.cardpayment.root, refill_window, wrapup=None, settings=self
             )
             refill_window.place_window_center()
+            refill_window.iconbitmap('./assets/img/robot_icon_title.ico')
             refill_window.deiconify()
         else:
             self._user_setup_window(changing_mode=False)
@@ -428,6 +430,7 @@ class Settings(tkb.Frame):
         wrapup_window.config(padx=10)
         WrapUp(wrapup_window)
         wrapup_window.place_window_center()
+        wrapup_window.iconbitmap('./assets/img/robot_icon_title.ico')
         wrapup_window.deiconify()
 
     def open_dropship_app(self):
@@ -438,6 +441,7 @@ class Settings(tkb.Frame):
         dropship_window.withdraw()
         DropShipLookUp(master=dropship_window, root=dropship_window)
         dropship_window.place_window_center()
+        dropship_window.iconbitmap('./assets/img/robot_icon_title.ico')
         dropship_window.deiconify()
 
     def open_link_btn(self):

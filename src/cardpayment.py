@@ -12,6 +12,7 @@ import win32api
 
 from ttkbootstrap.constants import *
 from ttkbootstrap.dialogs import Messagebox
+from ttkbootstrap.tooltip import ToolTip
 from tkinter.ttk import Style
 from PyPDF2 import PdfReader, PdfWriter
 from PyPDF2.generic import BooleanObject, NameObject, NumberObject, IndirectObject
@@ -98,6 +99,8 @@ class CardPayment(tkb.Labelframe):
         root.bind('<Control-Return>', self.submit_message_box)
         # root.bind('<Control-s>', self.toggle_settings_window)
         root.bind('<Control-n>', self.toggle_notes_window)
+        root.bind('<Control-s>', self.toggle_settings_window)
+        root.bind('<Control-r>', self.toggle_reprint_window)
    
         # Register validation callbacks
         self.valid_card_func = root.register(self._validate_card_number)
@@ -230,18 +233,28 @@ class CardPayment(tkb.Labelframe):
             style='TButton',
         )
         self.sub_btn.pack(side=BOTTOM, pady=(0,4))
+        ToolTip(
+            widget=self.sub_btn,
+            text='<CTRL+ENTER>\nProduce a tangible copy of the payment form onto the designated printing apparatus.',
+            delay=500
+        )
         
         set_btn = tkb.Button(
             master=container,
             text="Settings",
             command=lambda: self.toggle_settings_window(e=None),
-            bootstyle=DARK,
+            bootstyle=SECONDARY,
             width=9,
-            style='TButton.dark'
+            style='TButton.secondary'
         )
         set_btn.pack(side=BOTTOM, pady=(0,12))
+        ToolTip(
+            widget=set_btn,
+            text='<CTRL+S>\nUnveil the configuration panel.',
+            delay=500
+        )
 
-        self.files_btn = tkb.Button(
+        self.reprint_btn = tkb.Button(
             master=container,
             text="Reprint",
             command=lambda: self.toggle_reprint_window(e=None),
@@ -249,7 +262,12 @@ class CardPayment(tkb.Labelframe):
             width=9,
             style='TButton.dark'
         )
-        self.files_btn.pack(side=BOTTOM, pady=(0,12))
+        self.reprint_btn.pack(side=BOTTOM, pady=(0,12))
+        ToolTip(
+            widget=self.reprint_btn,
+            text="<CTRL+R>\nReproduce the card payment document onto a selected printing apparataus of preference.",
+            delay=500
+        )
 
         notes_btn = tkb.Button(
             master=container,
@@ -260,6 +278,26 @@ class CardPayment(tkb.Labelframe):
             style='TButton.dark'
         )
         notes_btn.pack(side=BOTTOM, pady=(0,12))
+        ToolTip(
+            widget=notes_btn,
+            text="<CTRL+N>\nUnfurl the memorandum casement to inscribe thoughts concerning the intelligence of payment.",
+            delay=500
+        )
+
+        clear_btn = tkb.Button(
+            master=container,
+            text='Clear',
+            command=self.confirm_clear,
+            bootstyle=DARK,
+            width=9,
+            style='TButton.dark'
+        )
+        clear_btn.pack(side=BOTTOM, pady=(0, 12))
+        ToolTip(
+            widget=clear_btn,
+            text="Obliterate all the inscriptions in the fields of the card payment application.",
+            delay=500
+        )
 
         return container
     
@@ -315,6 +353,18 @@ class CardPayment(tkb.Labelframe):
             pass
 
         return dict_fields
+    
+    def confirm_clear(self):
+        """Confirmation window for clearing all entries."""
+        confirm = Messagebox.yesno(
+            parent=self,
+            title='Confirm Clear',
+            message="Select 'Yes' to clear all entries."
+        )
+
+        if confirm == 'Yes':
+            self.clear_all_entries()
+            self.focus_force()
     
     def submit_message_box(self, e):
         """Prompt user for confirmation when 'Submit' button is pressed."""
@@ -815,14 +865,15 @@ class CardPayment(tkb.Labelframe):
     def create_notes_window(self):
         """Create Notes window."""
         self.notes_window = tkb.Toplevel(self)
+        self.notes_isHidden = True
+        self.toggle_notes_window(e=None)
         self.notes_window.title('Notes')
         self.notes_window.geometry('240x150')
         self.notes_window.resizable(False, False)
         # self.notes_window.overrideredirect(True)
         self.notes_text_box = tk.Text(self.notes_window, font=('Sergoe UI', 14, 'normal'), wrap=WORD)
         self.notes_text_box.pack(expand=YES)
-        self.notes_isHidden = True
-        self.toggle_notes_window(e=None)
+        
         self.notes_window.protocol('WM_DELETE_WINDOW', lambda: self.toggle_notes_window(e=None))
         self.notes_window.bind('<Escape>', self.toggle_notes_window)
         
@@ -847,12 +898,12 @@ class CardPayment(tkb.Labelframe):
     def create_settings_window(self):
         """"Create the settings window."""
         self.settings_window = tkb.Toplevel(self)
+        self.settings_isHidden = True
+        self.toggle_settings_window(e=None)
         self.settings_window.title('Settings')
         self.settings_window.resizable(False, False)
         # self.settings_window.overrideredirect(True)
         settings = Settings(self.settings_window, self)
-        self.settings_isHidden = True
-        self.toggle_settings_window(e=None)
         self.settings_window.protocol('WM_DELETE_WINDOW', func=lambda: self.toggle_settings_window(e=None))
         self.settings_window.bind('<Escape>', self.toggle_settings_window)
         return settings
@@ -938,7 +989,7 @@ class CardPayment(tkb.Labelframe):
             'always_on_top': 'no',
             'user': '',
             'mode': 'Payment',
-            'theme': 'litera',
+            'theme': 'cosmo',
         }
         with open(file_path, 'w') as f:
             data = json.dumps(default_settings, indent=4)
@@ -1056,7 +1107,7 @@ class CardPayment(tkb.Labelframe):
 
 if __name__ == '__main__':
     app = tkb.Window(
-        'Card Payment Form', 'litera', resizable=(False, False)
+        'Card Payment Form', 'cosmo', resizable=(False, False)
     )
 
     cardpayment = CardPayment(app, app)

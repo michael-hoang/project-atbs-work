@@ -7,6 +7,8 @@ class AssetManager:
             'ae.png',
             'di.png',
             'mc.png',
+            'robot_icon.ico',
+            'robot_icon_title.ico',
             'update.ico',
             'update.png',
             'vi.png',

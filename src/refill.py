@@ -118,6 +118,20 @@ class Refill(tkb.Frame):
             delay=500
         )
 
+        # Toggle Reassessment button
+        self.reassessment_toggle_state = tkb.IntVar()
+        reassessment_toggle_btn = tkb.Checkbutton(
+            master=main_display_frame,
+            bootstyle='round-toggle',
+            text='Reassessment',
+            variable=self.reassessment_toggle_state,
+            command=None,
+            style='Roundtoggle.Toolbutton'
+        )
+        reassessment_toggle_btn.grid(
+            row=0, column=1, padx=(0, 0), pady=(0, 15), sticky='w'
+        )
+
         # Clear button
         clear_btn = tkb.Button(
             master=main_display_frame,
@@ -881,6 +895,7 @@ class Refill(tkb.Frame):
                 btn_group[btn_state] = 0
 
         self.clear_intervention_tab()
+        self.reassessment_toggle_state.set(0)
 
         win32clipboard.OpenClipboard(0)
         win32clipboard.EmptyClipboard()
@@ -1356,16 +1371,30 @@ Confirmed with {spoke_with}'
                 adherence = 'NOT ADHERENT'
                 embedded_adherence_notes = fr'\line\line\tab {adherence_notes}'
 
-        template = fr'\b\fs26Refill Reminder\b0\fs24\
+        # Reassessment conditions
+        if not self.reassessment_toggle_state.get():
+            template_title = 'Refill Reminder'
+            ready_to_fill_question = fr'\line Is patient ready to fill? {{{ready_to_fill}}}\line'
+            dur_check = ''
+            continuation_therapy_question = fr'\line \b\fs26 Is continuation of therapy appropriate: \b0\fs24 {{{continuation_therapy}}}\line'
+            therapeutic_benefit_question = ''
+            disease_assessment = ''
+        else:
+            template_title = 'Specialty Pharmacy - Clinical Reassessment'
+            ready_to_fill_question = ''
+            dur_check = r'\line Was a drug utilization review (DUR) conducted\? \{YES/NO\:12979\}\line\tab If yes, Medications can been screened for drug-drug interactions through \{micromedex, lexicomp, other\:28109\} and drug-drug interactions were \{found, not found\:28110\}\line'
+            continuation_therapy_question = ''
+            therapeutic_benefit_question = fr'\b\fs26\line Is the patient receiving therapeutic benefit from the medication:\b0\fs24  Yes\line'
+            disease_assessment = fr'\b\fs26\line Complete disease assessment?\b0\fs24  No - patient does not have time\line'
+
+        template = fr'\b\fs26{template_title}\b0\fs24\
 \
 Medication: {{{medication}}}\
 \
 Methods of HIPAA Verification: {{{hipaa_verification}}}\
 \
 Changes Since Last Visit: {{{changes}}}\
-\
-Is patient ready to fill? {{{ready_to_fill}}}\
-\
+{{{ready_to_fill_question}}}\
 Patient has {{{days_supply}}} days of medication on hand.{{{next_injection_cycle_due}}}\
 Please select the following: {{{delivery_pickup}}}\
 Ready to dispense date: {{{dispense_date}}}\
@@ -1378,15 +1407,13 @@ Were there any new allergies: {{{new_allergies}}}\
 Medication review was performed: {{{medication_review}}} through {{{medication_review_confirmation}}}\
 \
 Is patient taking any new medications, OTCs, or herbal supplements? {{{new_medications}}}\
-\
+{{{dur_check}}}\
 \b\fs26 Medical Conditions Review \b0\fs24\
 Medical conditions review was performed: {{{medical_conditions_review}}}\
 Were there changes to the medical condition? {{{medical_condition_changes}}}\
-\
-\b\fs26 Is continuation of therapy appropriate: \b0\fs24 {{{continuation_therapy}}}\
-\
+{{{continuation_therapy_question}}}\
 \b\fs26 Do you feel like this medication is working for you:\b0\fs24  {{{med_working}}}\
-\
+{{{therapeutic_benefit_question}}}\
 Has the patient reported experiencing any of the following? {{{review_symptoms}}}\
 Is intervention necessary (if yes for any above): {{{intervention_necessary}}}\
 \
@@ -1395,7 +1422,7 @@ Patient is {{{adherence}}} to therapy.{{{embedded_adherence_notes}}}\
 ***\
 \
 GOAL: Is patient meeting goal? {{{goal}}}\
-\
+{{{disease_assessment}}}\
 Does patient need to speak to a pharmacist? {{{speak_to_rph}}}\
 \
 {{{user}}}\
@@ -1421,8 +1448,8 @@ Specialty Pharmacy'
 
 if __name__ == '__main__':
     app = tkb.Window(
-        'Refill Coordination', 'superhero', resizable=(False, False)
+        'Refill Coordination', 'cosmo', resizable=(False, False)
     )
-    Refill(app, app)
+    Refill(app, app, None, None)
     app.place_window_center()
     app.mainloop()
